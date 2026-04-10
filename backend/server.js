@@ -12,6 +12,9 @@ dotenv.config();
 
 const app = express();
 
+// =========================
+// 기본 설정
+// =========================
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -27,6 +30,9 @@ if (!MONGO_URI) {
   process.exit(1);
 }
 
+// =========================
+// 업로드 폴더 준비
+// =========================
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -34,6 +40,9 @@ if (!fs.existsSync(uploadsDir)) {
 
 app.use('/uploads', express.static(uploadsDir));
 
+// =========================
+// MongoDB 연결
+// =========================
 mongoose
   .connect(MONGO_URI)
   .then(() => console.log('MongoDB connected'))
@@ -42,6 +51,20 @@ mongoose
     process.exit(1);
   });
 
+// =========================
+// 루트 / 헬스체크
+// =========================
+app.get('/', (req, res) => {
+  res.status(200).send('secret-board backend is running');
+});
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ ok: true, message: 'server is healthy' });
+});
+
+// =========================
+// 스키마
+// =========================
 const attachmentSchema = new mongoose.Schema(
   {
     originalName: { type: String, default: '' },
@@ -73,6 +96,9 @@ const postSchema = new mongoose.Schema(
 
 const Post = mongoose.models.Post || mongoose.model('Post', postSchema);
 
+// =========================
+// 관리자 인증
+// =========================
 function signAdminToken() {
   return jwt.sign({ id: ADMIN_ID, role: 'admin' }, JWT_SECRET, { expiresIn: '12h' });
 }
@@ -82,6 +108,7 @@ function getIsAdminFromRequest(req) {
     const auth = req.headers.authorization || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     if (!token) return false;
+
     const decoded = jwt.verify(token, JWT_SECRET);
     return decoded.role === 'admin';
   } catch (error) {
@@ -104,12 +131,15 @@ function verifyAdmin(req, res, next) {
     }
 
     req.admin = decoded;
-    next();
+    return next();
   } catch (error) {
     return res.status(401).json({ message: '관리자 인증이 유효하지 않습니다.' });
   }
 }
 
+// =========================
+// 파일명 처리
+// =========================
 function decodeOriginalName(name) {
   if (!name) return '';
   try {
@@ -120,14 +150,19 @@ function decodeOriginalName(name) {
 }
 
 function sanitizeBaseName(name) {
-  return String(name || '')
-    .normalize('NFKD')
-    .replace(/[^\w\s.-]/g, '')
-    .replace(/\s+/g, '_')
-    .replace(/_+/g, '_')
-    .trim() || 'file';
+  return (
+    String(name || '')
+      .normalize('NFKD')
+      .replace(/[^\w\s.-]/g, '')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .trim() || 'file'
+  );
 }
 
+// =========================
+// multer 설정
+// =========================
 const storage = multer.diskStorage({
   destination(req, file, cb) {
     cb(null, uploadsDir);
@@ -173,6 +208,9 @@ function hasAttachment(attachment) {
   return !!(attachment && attachment.fileName && attachment.fileUrl);
 }
 
+// =========================
+// 게시글 목록
+// =========================
 app.get('/api/posts', async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page || '1', 10), 1);
@@ -225,6 +263,7 @@ app.get('/api/posts', async (req, res) => {
     const totalPages = Math.max(Math.ceil(arrangedPosts.length / 10), 1);
     const start = (page - 1) * 10;
     const end = start + 10;
+
     const pagePosts = arrangedPosts.slice(start, end).map((post) => ({
       ...post,
       hasAttachment: hasAttachment(post.attachment),
@@ -245,6 +284,9 @@ app.get('/api/posts', async (req, res) => {
   }
 });
 
+// =========================
+// 게시글 상세
+// =========================
 app.get('/api/post/:id', async (req, res) => {
   try {
     const isAdmin = getIsAdminFromRequest(req);
@@ -278,6 +320,9 @@ app.get('/api/post/:id', async (req, res) => {
   }
 });
 
+// =========================
+// 비밀번호 확인
+// =========================
 app.post('/api/post/:id/check', async (req, res) => {
   try {
     const { password } = req.body;
@@ -303,6 +348,9 @@ app.post('/api/post/:id/check', async (req, res) => {
   }
 });
 
+// =========================
+// 글 작성
+// =========================
 app.post('/api/write', upload.single('attachment'), async (req, res) => {
   try {
     const isAdmin = getIsAdminFromRequest(req);
@@ -397,6 +445,9 @@ app.post('/api/write', upload.single('attachment'), async (req, res) => {
   }
 });
 
+// =========================
+// 글 삭제
+// =========================
 app.post('/api/delete', async (req, res) => {
   try {
     const { id, password } = req.body;
@@ -433,6 +484,9 @@ app.post('/api/delete', async (req, res) => {
   }
 });
 
+// =========================
+// 첨부파일 삭제
+// =========================
 app.post('/api/delete-attachment', async (req, res) => {
   try {
     const { id, password } = req.body;
@@ -480,6 +534,9 @@ app.post('/api/delete-attachment', async (req, res) => {
   }
 });
 
+// =========================
+// 관리자 로그인
+// =========================
 app.post('/api/admin/login', async (req, res) => {
   try {
     const { id, password } = req.body;
@@ -500,6 +557,9 @@ app.post('/api/admin/login', async (req, res) => {
   }
 });
 
+// =========================
+// 관리자 비밀번호 변경
+// =========================
 app.post('/api/admin/change-password', verifyAdmin, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -523,6 +583,9 @@ app.post('/api/admin/change-password', verifyAdmin, async (req, res) => {
   }
 });
 
+// =========================
+// 파일 다운로드
+// =========================
 app.get('/api/download/:id', async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
@@ -544,6 +607,16 @@ app.get('/api/download/:id', async (req, res) => {
   }
 });
 
+// =========================
+// 404 처리
+// =========================
+app.use((req, res) => {
+  return res.status(404).json({ message: 'Not Found' });
+});
+
+// =========================
+// 서버 실행
+// =========================
 app.listen(PORT, () => {
-  console.log(`서버 실행됨 http://localhost:${PORT}`);
+  console.log(`서버 실행됨 ${PORT}포트`);
 });
