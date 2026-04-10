@@ -15,7 +15,29 @@ const app = express();
 // =========================
 // 기본 설정
 // =========================
-app.use(cors());
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://secret-board-e88q-9qhnhxuzp-jycompany051s-projects.vercel.app',
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      // 브라우저가 아닌 요청(예: 서버간 통신, health check)은 origin이 없을 수 있음
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
