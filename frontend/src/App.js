@@ -1,5 +1,5 @@
 import { BrowserRouter, Link, Route, Routes, useNavigate, useParams, useLocation } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import axios from 'axios';
 
 const API = process.env.REACT_APP_API_URL || 'https://secret-board-2q81.onrender.com/api';
@@ -150,11 +150,6 @@ function ListPage() {
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
   const isAdmin = !!getAdminToken();
-
-  const page = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return Number(params.get('page') || '1');
-  }, [location.search]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
