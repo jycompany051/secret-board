@@ -759,7 +759,197 @@ function DetailPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [attachmentDeleteModalOpen, setAttachmentDeleteModalOpen] = useState(false);
   const isAdmin = !!getAdminToken();
-  const isMobile = useIsMobile();
+
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const res = await axios.get(`${API}/post/${id}`, apiConfig());
+        setPost(res.data.post);
+      } catch (err) {
+        alert(err.response?.data?.message || '글을 불러오지 못했습니다.');
+        navigate('/');
+      } finally {
+        setLoading(false);
+      }
+    };
+    run();
+  }, [id, navigate]);
+
+  const removePost = async (password = '') => {
+    try {
+      await axios.post(`${API}/delete`, { id, password }, apiConfig());
+      alert('삭제되었습니다.');
+      navigate('/');
+    } catch (err) {
+      alert(err.response?.data?.message || '삭제에 실패했습니다.');
+    }
+  };
+
+  const removeAttachment = async (password = '') => {
+    if (!post?.hasAttachment) return;
+
+    try {
+      await axios.post(`${API}/delete-attachment`, { id, password }, apiConfig());
+      alert('첨부파일이 삭제되었습니다.');
+      const res = await axios.get(`${API}/post/${id}`, apiConfig());
+      setPost(res.data.post);
+    } catch (err) {
+      alert(err.response?.data?.message || '첨부파일 삭제에 실패했습니다.');
+    }
+  };
+
+  if (loading) {
+    return <Layout><div>불러오는 중...</div></Layout>;
+  }
+
+  if (!post) {
+    return <Layout><div>글을 찾을 수 없습니다.</div></Layout>;
+  }
+
+  return (
+    <Layout>
+      {!isAdmin && (
+        <>
+          <PasswordModal
+            open={deleteModalOpen}
+            title="삭제 비밀번호를 입력하세요"
+            onClose={() => setDeleteModalOpen(false)}
+            onConfirm={(password) => {
+              if (!password) return;
+              setDeleteModalOpen(false);
+              removePost(password);
+            }}
+          />
+          <PasswordModal
+            open={attachmentDeleteModalOpen}
+            title="첨부파일 삭제 비밀번호를 입력하세요"
+            onClose={() => setAttachmentDeleteModalOpen(false)}
+            onConfirm={(password) => {
+              if (!password) return;
+              setAttachmentDeleteModalOpen(false);
+              removeAttachment(password);
+            }}
+          />
+        </>
+      )}
+
+      <div style={panelStyle}>
+        <div style={{ borderTop: '2px solid #cfd8cc' }}>
+          
+          {/* 제목 */}
+          <div style={{
+            padding: '18px 0',
+            borderBottom: '1px solid #e6ede4',
+            fontSize: 24,
+            fontWeight: 700,
+            color: '#49564d'
+          }}>
+            {post.isReply ? `[RE] ${post.title}` : post.title}
+          </div>
+
+          {/* 정보 */}
+          <div style={{
+            display: 'flex',
+            gap: 16,
+            padding: '12px 0',
+            borderBottom: '1px solid #e6ede4',
+            flexWrap: 'wrap',
+            fontSize: 14
+          }}>
+            <div>작성자: {post.nickname}</div>
+            <div>{new Date(post.createdAt).toLocaleString()}</div>
+            {post.isNotice && <div style={{ fontWeight: 700 }}>공지</div>}
+          </div>
+
+          {/* 첨부파일 (🔥 미리보기 제거 버전) */}
+          {post.hasAttachment && (
+            <div style={{
+              padding: '14px 0',
+              borderBottom: '1px solid #e6ede4',
+            }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                첨부파일
+              </div>
+
+              <a
+                href={`${FILE_BASE_URL}${post.attachment.fileUrl}`}
+                download
+                style={{
+                  color: '#60786a',
+                  textDecoration: 'underline',
+                  display: 'inline-block',
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                📎 {post.attachment.originalName || '파일 다운로드'}
+              </a>
+
+              <div style={{ marginTop: 10 }}>
+                <a href={`${API}/download/${post._id}`}>
+                  <button style={mainBtnStyle('#7d8f83', 90)}>
+                    다운로드
+                  </button>
+                </a>
+
+                <button
+                  onClick={() => {
+                    if (isAdmin) removeAttachment('');
+                    else setAttachmentDeleteModalOpen(true);
+                  }}
+                  style={{ ...mainBtnStyle('#9a7a7a', 100), marginLeft: 8 }}
+                >
+                  첨부삭제
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 내용 */}
+          <div style={{
+            minHeight: 200,
+            padding: '20px 0',
+            whiteSpace: 'pre-wrap',
+            lineHeight: 1.6
+          }}>
+            {post.content}
+          </div>
+
+          {/* 버튼 */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: 8,
+            marginTop: 20
+          }}>
+            <button onClick={() => navigate('/')} style={subBtnStyle}>
+              목록
+            </button>
+
+            <button
+              onClick={() => navigate(`/write?parentId=${post._id}`)}
+              style={mainBtnStyle('#7a8e7a', 90)}
+            >
+              답글
+            </button>
+
+            <button
+              onClick={() => {
+                if (isAdmin) removePost('');
+                else setDeleteModalOpen(true);
+              }}
+              style={mainBtnStyle('#8a7474', 90)}
+            >
+              삭제
+            </button>
+          </div>
+        </div>
+      </div>
+    </Layout>
+  );
+}
 
   useEffect(() => {
     const run = async () => {
