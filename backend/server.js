@@ -21,6 +21,7 @@ const allowedOrigins = [
   'https://secret-board-e88q-9qhnhxuzp-jycompany051s-projects.vercel.app',
   'https://secret-board-e88q.vercel.app',
   'https://secret-board-e88q-git-main-jycompany051s-projects.vercel.app',
+  'https://sites.google.com',
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 

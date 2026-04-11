@@ -721,6 +721,12 @@ function DetailPage() {
     return <Layout><div>글을 찾을 수 없습니다.</div></Layout>;
   }
 
+  const attachmentPreviewUrl = post?.hasAttachment
+    ? `${FILE_BASE_URL}${post.attachment.fileUrl}`
+    : '';
+
+  const isImageAttachment = post?.hasAttachment && post?.attachment?.mimetype?.startsWith('image/');
+
   return (
     <Layout>
       {!isAdmin && (
@@ -794,10 +800,11 @@ function DetailPage() {
             >
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700, marginBottom: 6, color: '#5f6d63' }}>첨부파일</div>
+
                 <a
-                  href={`${FILE_BASE_URL}${post.attachment.fileUrl}`}
+                  href={attachmentPreviewUrl}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   title={post.attachment.originalName}
                   style={{
                     color: '#60786a',
@@ -812,11 +819,31 @@ function DetailPage() {
                 >
                   {post.attachment.originalName}
                 </a>
+
+                {isImageAttachment ? (
+                  <div style={{ marginTop: 12 }}>
+                    <img
+                      src={attachmentPreviewUrl}
+                      alt={post.attachment.originalName || '첨부 이미지'}
+                      style={{
+                        maxWidth: '100%',
+                        borderRadius: 10,
+                        border: '1px solid #e5ebe3',
+                        display: 'block',
+                      }}
+                    />
+                  </div>
+                ) : null}
               </div>
 
               <div style={{ display: 'flex', gap: 8, flexShrink: 0, width: isMobile ? '100%' : 'auto', flexDirection: isMobile ? 'column' : 'row' }}>
-                <a href={`${API}/download/${post._id}`} style={{ textDecoration: 'none', width: isMobile ? '100%' : 'auto' }}>
-                  <button style={{ ...mainBtnStyle('#7d8f83', 92), width: isMobile ? '100%' : 92 }}>다운로드</button>
+                <a
+                  href={`${API}/download/${post._id}`}
+                  style={{ textDecoration: 'none', width: isMobile ? '100%' : 'auto' }}
+                >
+                  <button style={{ ...mainBtnStyle('#7d8f83', 92), width: isMobile ? '100%' : 92 }}>
+                    다운로드
+                  </button>
                 </a>
                 <button
                   onClick={() => {
