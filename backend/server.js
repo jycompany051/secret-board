@@ -29,11 +29,7 @@ app.use(
   cors({
     origin(origin, callback) {
       if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
+      if (allowedOrigins.includes(origin)) return callback(null, true);
       return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
     credentials: true,
@@ -106,13 +102,10 @@ const postSchema = new mongoose.Schema(
     content: { type: String, required: true, default: '' },
     nickname: { type: String, required: true, default: '' },
     password: { type: String, default: '' },
-
     isNotice: { type: Boolean, default: false },
     isReply: { type: Boolean, default: false },
     parentPostId: { type: mongoose.Schema.Types.ObjectId, ref: 'Post', default: null },
-
     isCheckedByAdmin: { type: Boolean, default: false },
-
     attachments: { type: [attachmentSchema], default: [] },
   },
   { timestamps: true }
@@ -138,7 +131,7 @@ async function ensureAdminAccount() {
 
     if (!admin) {
       const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 10);
-      admin = await Admin.create({
+      await Admin.create({
         adminId: ADMIN_ID,
         password: hashedPassword,
       });
@@ -161,10 +154,9 @@ function getIsAdminFromRequest(req) {
     const auth = req.headers.authorization || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     if (!token) return false;
-
     const decoded = jwt.verify(token, JWT_SECRET);
     return decoded.role === 'admin';
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -179,13 +171,14 @@ function verifyAdmin(req, res, next) {
     }
 
     const decoded = jwt.verify(token, JWT_SECRET);
+
     if (decoded.role !== 'admin') {
       return res.status(403).json({ message: '권한이 없습니다.' });
     }
 
     req.admin = decoded;
     return next();
-  } catch (error) {
+  } catch {
     return res.status(401).json({ message: '관리자 인증이 유효하지 않습니다.' });
   }
 }
@@ -197,7 +190,7 @@ function decodeOriginalName(name) {
   if (!name) return '';
   try {
     return Buffer.from(name, 'latin1').toString('utf8');
-  } catch (error) {
+  } catch {
     return name;
   }
 }
@@ -232,22 +225,22 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024, files: 5 },
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+    files: 5,
+  },
 });
 
 function buildAttachments(files) {
-  if (!files || files.length === 0) return [];
+  if (!Array.isArray(files) || files.length === 0) return [];
 
-  return files.map((file) => {
-    const decodedOriginalName = decodeOriginalName(file.originalname || '');
-    return {
-      originalName: decodedOriginalName,
-      fileName: file.filename || '',
-      fileUrl: `/uploads/${file.filename}`,
-      size: file.size || 0,
-      mimetype: file.mimetype || '',
-    };
-  });
+  return files.map((file) => ({
+    originalName: decodeOriginalName(file.originalname || ''),
+    fileName: file.filename || '',
+    fileUrl: `/uploads/${file.filename}`,
+    size: file.size || 0,
+    mimetype: file.mimetype || '',
+  }));
 }
 
 function hasAttachments(attachments) {
@@ -294,9 +287,7 @@ app.get('/api/posts', async (req, res) => {
     }
 
     const arrangedPosts = [];
-    for (const notice of noticePosts) {
-      arrangedPosts.push(notice);
-    }
+    for (const notice of noticePosts) arrangedPosts.push(notice);
 
     for (const parent of parentPosts) {
       arrangedPosts.push(parent);
