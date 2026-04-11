@@ -27,7 +27,6 @@ const allowedOrigins = [
 app.use(
   cors({
     origin(origin, callback) {
-      // 브라우저가 아닌 요청(예: 서버간 통신, health check)은 origin이 없을 수 있음
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
@@ -118,13 +117,42 @@ const postSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+const adminSchema = new mongoose.Schema(
+  {
+    adminId: { type: String, required: true, unique: true, default: 'admin' },
+    password: { type: String, required: true, default: '' },
+  },
+  { timestamps: true }
+);
+
 const Post = mongoose.models.Post || mongoose.model('Post', postSchema);
+const Admin = mongoose.models.Admin || mongoose.model('Admin', adminSchema);
+
+// =========================
+// 관리자 초기 생성
+// =========================
+async function ensureAdminAccount() {
+  try {
+    let admin = await Admin.findOne({ adminId: ADMIN_ID });
+
+    if (!admin) {
+      const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 10);
+      admin = await Admin.create({
+        adminId: ADMIN_ID,
+        password: hashedPassword,
+      });
+      console.log(`관리자 계정 생성 완료: ${ADMIN_ID}`);
+    }
+  } catch (error) {
+    console.error('관리자 계정 생성 오류:', error);
+  }
+}
 
 // =========================
 // 관리자 인증
 // =========================
-function signAdminToken() {
-  return jwt.sign({ id: ADMIN_ID, role: 'admin' }, JWT_SECRET, { expiresIn: '12h' });
+function signAdminToken(adminId) {
+  return jwt.sign({ id: adminId, role: 'admin' }, JWT_SECRET, { expiresIn: '12h' });
 }
 
 function getIsAdminFromRequest(req) {
@@ -565,11 +593,17 @@ app.post('/api/admin/login', async (req, res) => {
   try {
     const { id, password } = req.body;
 
-    if (id !== ADMIN_ID || password !== ADMIN_PASSWORD) {
+    const admin = await Admin.findOne({ adminId: id });
+    if (!admin) {
       return res.status(401).json({ message: '관리자 아이디 또는 비밀번호가 틀렸습니다.' });
     }
 
-    const token = signAdminToken();
+    const ok = await bcrypt.compare(String(password || ''), admin.password);
+    if (!ok) {
+      return res.status(401).json({ message: '관리자 아이디 또는 비밀번호가 틀렸습니다.' });
+    }
+
+    const token = signAdminToken(admin.adminId);
     return res.json({
       ok: true,
       token,
@@ -588,18 +622,31 @@ app.post('/api/admin/change-password', verifyAdmin, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
 
-    if (currentPassword !== ADMIN_PASSWORD) {
-      return res.status(400).json({ message: '현재 비밀번호가 틀렸습니다.' });
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: '현재 비밀번호와 새 비밀번호를 입력해주세요.' });
     }
 
-    if (!newPassword || String(newPassword).trim().length < 4) {
+    if (String(newPassword).trim().length < 4) {
       return res.status(400).json({ message: '새 비밀번호는 4자 이상 입력해주세요.' });
     }
 
+    const admin = await Admin.findOne({ adminId: req.admin.id });
+    if (!admin) {
+      return res.status(404).json({ message: '관리자 계정을 찾을 수 없습니다.' });
+    }
+
+    const ok = await bcrypt.compare(String(currentPassword || ''), admin.password);
+    if (!ok) {
+      return res.status(400).json({ message: '현재 비밀번호가 틀렸습니다.' });
+    }
+
+    const hashedNewPassword = await bcrypt.hash(String(newPassword), 10);
+    admin.password = hashedNewPassword;
+    await admin.save();
+
     return res.json({
       ok: true,
-      message: '비밀번호 변경 요청이 확인되었습니다.',
-      next: { ADMIN_PASSWORD: newPassword },
+      message: '비밀번호가 변경되었습니다.',
     });
   } catch (error) {
     console.error('POST /api/admin/change-password error:', error);
@@ -641,6 +688,7 @@ app.use((req, res) => {
 // =========================
 // 서버 실행
 // =========================
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`서버 실행됨 ${PORT}포트`);
+  await ensureAdminAccount();
 });
