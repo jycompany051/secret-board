@@ -400,7 +400,11 @@ function ListPage() {
                         {post.isReply ? `[RE] ${post.title}` : post.title}
                       </span>
 
-                      {post.hasAttachment ? <span style={{ color: '#7c8b80', fontSize: isMobile ? 11 : 13, flexShrink: 0 }}>[첨부]</span> : null}
+                      {post.hasAttachment ? (
+                        <span style={{ color: '#7c8b80', fontSize: isMobile ? 11 : 13, flexShrink: 0 }}>
+                          [첨부{post.attachmentCount > 1 ? ` ${post.attachmentCount}` : ''}]
+                        </span>
+                      ) : null}
                       {post.isNew ? <span style={{ color: '#d45454', fontSize: isMobile ? 10 : 12, fontWeight: 700, flexShrink: 0 }}>NEW</span> : null}
                     </div>
                   </div>
@@ -499,15 +503,33 @@ function WritePage() {
     nickname: '',
     password: '',
     isNotice: false,
-    attachment: null,
+    attachments: [],
   });
 
-  const removeSelectedAttachment = () => {
-    setForm((prev) => ({ ...prev, attachment: null }));
-    const fileInput = document.getElementById('attachment-input');
-    if (fileInput) {
-      fileInput.value = '';
+  const handleFilesChange = (e) => {
+    const selectedFiles = Array.from(e.target.files || []);
+    const currentFiles = form.attachments || [];
+    const merged = [...currentFiles, ...selectedFiles];
+
+    if (merged.length > 5) {
+      alert('첨부파일은 최대 5개까지 등록할 수 있습니다.');
+      e.target.value = '';
+      return;
     }
+
+    setForm((prev) => ({
+      ...prev,
+      attachments: merged,
+    }));
+
+    e.target.value = '';
+  };
+
+  const removeSelectedAttachment = (index) => {
+    setForm((prev) => ({
+      ...prev,
+      attachments: prev.attachments.filter((_, i) => i !== index),
+    }));
   };
 
   const submit = async () => {
@@ -526,7 +548,10 @@ function WritePage() {
       body.append('isNotice', String(form.isNotice));
 
       if (parentPostId) body.append('parentPostId', parentPostId);
-      if (form.attachment) body.append('attachment', form.attachment);
+
+      (form.attachments || []).forEach((file) => {
+        body.append('attachments', file);
+      });
 
       const res = await axios.post(`${API}/write`, body, {
         ...apiConfig(),
@@ -644,58 +669,62 @@ function WritePage() {
 
           <div style={{ marginTop: 14 }}>
             <label style={{ display: 'block', marginBottom: 8, color: '#5e6c62', fontWeight: 700 }}>
-              첨부파일
+              첨부파일 (최대 5개)
             </label>
 
             <input
-              id="attachment-input"
+              id="attachments-input"
               type="file"
-              onChange={(e) => setForm({ ...form, attachment: e.target.files?.[0] || null })}
+              multiple
+              onChange={handleFilesChange}
               style={{ width: '100%' }}
             />
 
-            {form.attachment ? (
-              <div
-                style={{
-                  marginTop: 10,
-                  padding: '10px 12px',
-                  border: '1px solid #e1e8de',
-                  borderRadius: 10,
-                  background: '#fafcf9',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: isMobile ? 'stretch' : 'center',
-                  gap: 10,
-                  flexWrap: 'wrap',
-                  flexDirection: isMobile ? 'column' : 'row',
-                }}
-              >
-                <span
-                  style={{
-                    color: '#5f6d63',
-                    fontSize: 14,
-                    wordBreak: 'break-all',
-                  }}
-                >
-                  선택된 파일: {form.attachment.name}
-                </span>
+            {(form.attachments || []).length > 0 ? (
+              <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {form.attachments.map((file, index) => (
+                  <div
+                    key={`${file.name}-${index}`}
+                    style={{
+                      padding: '10px 12px',
+                      border: '1px solid #e1e8de',
+                      borderRadius: 10,
+                      background: '#fafcf9',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: isMobile ? 'stretch' : 'center',
+                      gap: 10,
+                      flexDirection: isMobile ? 'column' : 'row',
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: '#5f6d63',
+                        fontSize: 14,
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      {index + 1}. {file.name}
+                    </span>
 
-                <button
-                  type="button"
-                  onClick={removeSelectedAttachment}
-                  style={{
-                    height: 36,
-                    border: 'none',
-                    background: '#9a7a7a',
-                    color: '#fff',
-                    cursor: 'pointer',
-                    borderRadius: 8,
-                    padding: '0 14px',
-                    width: isMobile ? '100%' : 'auto',
-                  }}
-                >
-                  첨부 취소
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => removeSelectedAttachment(index)}
+                      style={{
+                        height: 36,
+                        border: 'none',
+                        background: '#9a7a7a',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        borderRadius: 8,
+                        padding: '0 14px',
+                        width: isMobile ? '100%' : 'auto',
+                      }}
+                    >
+                      첨부취소
+                    </button>
+                  </div>
+                ))}
               </div>
             ) : null}
           </div>
@@ -778,11 +807,7 @@ function DetailPage() {
     return <Layout><div>글을 찾을 수 없습니다.</div></Layout>;
   }
 
-  const attachmentPreviewUrl = post?.hasAttachment
-    ? `${FILE_BASE_URL}${post.attachment.fileUrl}`
-    : '';
-
-  const isImageAttachment = post?.hasAttachment && post?.attachment?.mimetype?.startsWith('image/');
+  const attachments = Array.isArray(post.attachments) ? post.attachments : [];
 
   return (
     <Layout>
@@ -848,60 +873,80 @@ function DetailPage() {
                 padding: '16px 0',
                 borderBottom: '1px solid #e6ede4',
                 display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                gap: 14,
-                flexWrap: 'wrap',
-                flexDirection: isMobile ? 'column' : 'row',
+                flexDirection: 'column',
+                gap: 12,
               }}
             >
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: 700, marginBottom: 6, color: '#5f6d63' }}>첨부파일</div>
+              <div style={{ fontWeight: 700, color: '#5f6d63' }}>첨부파일</div>
 
-                <a
-                  href={attachmentPreviewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={post.attachment.originalName}
-                  style={{
-                    color: '#60786a',
-                    textDecoration: 'underline',
-                    display: 'inline-block',
-                    maxWidth: '100%',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    verticalAlign: 'top',
-                  }}
-                >
-                  {post.attachment.originalName}
-                </a>
+              {attachments.map((file, index) => {
+                const previewUrl = `${FILE_BASE_URL}${file.fileUrl}`;
+                const isImage = file.mimetype?.startsWith('image/');
 
-                {isImageAttachment ? (
-                  <div style={{ marginTop: 12 }}>
-                    <img
-                      src={attachmentPreviewUrl}
-                      alt={post.attachment.originalName || '첨부 이미지'}
+                return (
+                  <div
+                    key={`${file.fileName}-${index}`}
+                    style={{
+                      border: '1px solid #e5ebe3',
+                      borderRadius: 12,
+                      padding: 12,
+                      background: '#fafcf9',
+                    }}
+                  >
+                    <div
                       style={{
-                        maxWidth: '100%',
-                        borderRadius: 10,
-                        border: '1px solid #e5ebe3',
-                        display: 'block',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: isMobile ? 'stretch' : 'center',
+                        gap: 10,
+                        flexDirection: isMobile ? 'column' : 'row',
                       }}
-                    />
-                  </div>
-                ) : null}
-              </div>
+                    >
+                      <a
+                        href={previewUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={file.originalName}
+                        style={{
+                          color: '#60786a',
+                          textDecoration: 'underline',
+                          display: 'inline-block',
+                          maxWidth: '100%',
+                          wordBreak: 'break-all',
+                        }}
+                      >
+                        {file.originalName}
+                      </a>
 
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0, width: isMobile ? '100%' : 'auto', flexDirection: isMobile ? 'column' : 'row' }}>
-                <a
-                  href={`${API}/download/${post._id}`}
-                  style={{ textDecoration: 'none', width: isMobile ? '100%' : 'auto' }}
-                >
-                  <button style={{ ...mainBtnStyle('#7d8f83', 92), width: isMobile ? '100%' : 92 }}>
-                    다운로드
-                  </button>
-                </a>
+                      <a
+                        href={`${API}/download/${post._id}/${index}`}
+                        style={{ textDecoration: 'none', width: isMobile ? '100%' : 'auto' }}
+                      >
+                        <button style={{ ...mainBtnStyle('#7d8f83', 92), width: isMobile ? '100%' : 92 }}>
+                          다운로드
+                        </button>
+                      </a>
+                    </div>
+
+                    {isImage ? (
+                      <div style={{ marginTop: 12 }}>
+                        <img
+                          src={previewUrl}
+                          alt={file.originalName || '첨부 이미지'}
+                          style={{
+                            maxWidth: '100%',
+                            borderRadius: 10,
+                            border: '1px solid #e5ebe3',
+                            display: 'block',
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button
                   onClick={() => {
                     if (isAdmin) removeAttachment('');
@@ -909,7 +954,7 @@ function DetailPage() {
                   }}
                   style={{ ...mainBtnStyle('#9a7a7a', 110), width: isMobile ? '100%' : 110 }}
                 >
-                  첨부삭제
+                  첨부전체삭제
                 </button>
               </div>
             </div>

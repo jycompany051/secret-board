@@ -113,7 +113,7 @@ const postSchema = new mongoose.Schema(
 
     isCheckedByAdmin: { type: Boolean, default: false },
 
-    attachment: { type: attachmentSchema, default: () => ({}) },
+    attachments: { type: [attachmentSchema], default: [] },
   },
   { timestamps: true }
 );
@@ -232,33 +232,26 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024, files: 5 },
 });
 
-function buildAttachment(file) {
-  if (!file) {
+function buildAttachments(files) {
+  if (!files || files.length === 0) return [];
+
+  return files.map((file) => {
+    const decodedOriginalName = decodeOriginalName(file.originalname || '');
     return {
-      originalName: '',
-      fileName: '',
-      fileUrl: '',
-      size: 0,
-      mimetype: '',
+      originalName: decodedOriginalName,
+      fileName: file.filename || '',
+      fileUrl: `/uploads/${file.filename}`,
+      size: file.size || 0,
+      mimetype: file.mimetype || '',
     };
-  }
-
-  const decodedOriginalName = decodeOriginalName(file.originalname || '');
-
-  return {
-    originalName: decodedOriginalName,
-    fileName: file.filename || '',
-    fileUrl: `/uploads/${file.filename}`,
-    size: file.size || 0,
-    mimetype: file.mimetype || '',
-  };
+  });
 }
 
-function hasAttachment(attachment) {
-  return !!(attachment && attachment.fileName && attachment.fileUrl);
+function hasAttachments(attachments) {
+  return Array.isArray(attachments) && attachments.length > 0;
 }
 
 // =========================
@@ -319,7 +312,8 @@ app.get('/api/posts', async (req, res) => {
 
     const pagePosts = arrangedPosts.slice(start, end).map((post) => ({
       ...post,
-      hasAttachment: hasAttachment(post.attachment),
+      hasAttachment: hasAttachments(post.attachments),
+      attachmentCount: Array.isArray(post.attachments) ? post.attachments.length : 0,
       isNew: !post.isCheckedByAdmin && !post.isReply && !post.isNotice,
     }));
 
@@ -364,7 +358,7 @@ app.get('/api/post/:id', async (req, res) => {
       post: {
         ...post,
         parentTitle,
-        hasAttachment: hasAttachment(post.attachment),
+        hasAttachment: hasAttachments(post.attachments),
       },
     });
   } catch (error) {
@@ -404,7 +398,7 @@ app.post('/api/post/:id/check', async (req, res) => {
 // =========================
 // 글 작성
 // =========================
-app.post('/api/write', upload.single('attachment'), async (req, res) => {
+app.post('/api/write', upload.array('attachments', 5), async (req, res) => {
   try {
     const isAdmin = getIsAdminFromRequest(req);
 
@@ -488,7 +482,7 @@ app.post('/api/write', upload.single('attachment'), async (req, res) => {
       isReply: finalIsReply,
       parentPostId: finalParentPostId,
       isCheckedByAdmin: finalIsCheckedByAdmin,
-      attachment: buildAttachment(req.file),
+      attachments: buildAttachments(req.files),
     });
 
     return res.json({ ok: true, postId: created._id });
@@ -522,10 +516,12 @@ app.post('/api/delete', async (req, res) => {
       }
     }
 
-    if (hasAttachment(post.attachment)) {
-      const filePath = path.join(uploadsDir, post.attachment.fileName);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+    if (hasAttachments(post.attachments)) {
+      for (const file of post.attachments) {
+        const filePath = path.join(uploadsDir, file.fileName);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
       }
     }
 
@@ -538,7 +534,7 @@ app.post('/api/delete', async (req, res) => {
 });
 
 // =========================
-// 첨부파일 삭제
+// 첨부파일 전체 삭제
 // =========================
 app.post('/api/delete-attachment', async (req, res) => {
   try {
@@ -550,7 +546,7 @@ app.post('/api/delete-attachment', async (req, res) => {
       return res.status(404).json({ message: '글을 찾을 수 없습니다.' });
     }
 
-    if (!hasAttachment(post.attachment)) {
+    if (!hasAttachments(post.attachments)) {
       return res.status(400).json({ message: '삭제할 첨부파일이 없습니다.' });
     }
 
@@ -565,19 +561,14 @@ app.post('/api/delete-attachment', async (req, res) => {
       }
     }
 
-    const filePath = path.join(uploadsDir, post.attachment.fileName);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    for (const file of post.attachments) {
+      const filePath = path.join(uploadsDir, file.fileName);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
     }
 
-    post.attachment = {
-      originalName: '',
-      fileName: '',
-      fileUrl: '',
-      size: 0,
-      mimetype: '',
-    };
-
+    post.attachments = [];
     await post.save();
 
     return res.json({ ok: true, message: '첨부파일이 삭제되었습니다.' });
@@ -658,23 +649,30 @@ app.post('/api/admin/change-password', verifyAdmin, async (req, res) => {
 // =========================
 // 파일 다운로드
 // =========================
-app.get('/api/download/:id', async (req, res) => {
+app.get('/api/download/:id/:index?', async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
 
-    if (!post || !hasAttachment(post.attachment)) {
+    if (!post || !hasAttachments(post.attachments)) {
       return res.status(404).json({ message: '첨부파일이 없습니다.' });
     }
 
-    const filePath = path.join(uploadsDir, post.attachment.fileName);
+    const index = Number(req.params.index || 0);
+    const file = post.attachments[index];
+
+    if (!file) {
+      return res.status(404).json({ message: '파일을 찾을 수 없습니다.' });
+    }
+
+    const filePath = path.join(uploadsDir, file.fileName);
 
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ message: '파일을 찾을 수 없습니다.' });
     }
 
-    return res.download(filePath, post.attachment.originalName || post.attachment.fileName);
+    return res.download(filePath, file.originalName || file.fileName);
   } catch (error) {
-    console.error('GET /api/download/:id error:', error);
+    console.error('GET /api/download/:id/:index error:', error);
     return res.status(500).json({ message: '파일 다운로드에 실패했습니다.' });
   }
 });
