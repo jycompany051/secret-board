@@ -649,13 +649,11 @@ app.get('/api/download/:id', async (req, res) => {
     }
 
     const file = post.attachments[0];
-
     if (!file) {
       return res.status(404).json({ message: '파일을 찾을 수 없습니다.' });
     }
 
     const filePath = path.join(uploadsDir, file.fileName);
-
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ message: '파일을 찾을 수 없습니다.' });
     }
@@ -683,7 +681,6 @@ app.get('/api/download/:id/:index', async (req, res) => {
     }
 
     const filePath = path.join(uploadsDir, file.fileName);
-
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ message: '파일을 찾을 수 없습니다.' });
     }
