@@ -6,7 +6,7 @@ const API = process.env.REACT_APP_API_URL || 'https://secret-board-2q81.onrender
 const FILE_BASE_URL = process.env.REACT_APP_FILE_BASE_URL || 'https://secret-board-2q81.onrender.com';
 
 function getAdminToken() {
-  return localStorage.getItem('adminToken') || '';
+  return sessionStorage.getItem('adminToken') || '';
 }
 
 function apiConfig() {
@@ -80,7 +80,7 @@ function Layout({ children }) {
   const isMobile = useIsMobile();
 
   const logout = () => {
-    localStorage.removeItem('adminToken');
+    sessionStorage.removeItem('adminToken');
     alert('로그아웃 되었습니다.');
     navigate('/');
     window.location.reload();
@@ -246,7 +246,7 @@ function ListPage() {
   };
 
   const goDetail = (post) => {
-    if (isAdmin) {
+    if (isAdmin || post.isNotice || !post.password) {
       navigate(`/post/${post._id}`);
       return;
     }
@@ -262,7 +262,7 @@ function ListPage() {
     try {
       await axios.post(`${API}/post/${selectedPost._id}/check`, { password });
       setPasswordModalOpen(false);
-      navigate(`/post/${selectedPost._id}?access=granted`);
+      navigate(`/post/${selectedPost._id}`);
     } catch (err) {
       alert(err.response?.data?.message || '비밀번호가 틀렸습니다.');
     }
@@ -895,8 +895,9 @@ function DetailPage() {
                   }}
                 >
                   <a
-                    href={`${API}/download/${post._id}/${index}`}
-                    download
+                    href={`${FILE_BASE_URL}${file.fileUrl}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     title={file.originalName}
                     style={{
                       color: '#60786a',
@@ -985,7 +986,7 @@ function AdminLoginPage() {
     setMessage('');
     try {
       const res = await axios.post(`${API}/admin/login`, { id, password });
-      localStorage.setItem('adminToken', res.data.token);
+      sessionStorage.setItem('adminToken', res.data.token);
       alert(res.data.message || '관리자 로그인 되었습니다.');
       navigate('/');
       window.location.reload();
