@@ -19,6 +19,8 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
   'https://secret-board-e88q-9qhnhxuzp-jycompany051s-projects.vercel.app',
+  'https://secret-board-e88q.vercel.app',
+  'https://secret-board-e88q-git-main-jycompany051s-projects.vercel.app',
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
