@@ -640,7 +640,7 @@ app.post('/api/admin/change-password', verifyAdmin, async (req, res) => {
 // =========================
 // 파일 다운로드
 // =========================
-app.get('/api/download/:id/:index?', async (req, res) => {
+app.get('/api/download/:id', async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
 
@@ -648,7 +648,34 @@ app.get('/api/download/:id/:index?', async (req, res) => {
       return res.status(404).json({ message: '첨부파일이 없습니다.' });
     }
 
-    const index = Number(req.params.index || 0);
+    const file = post.attachments[0];
+
+    if (!file) {
+      return res.status(404).json({ message: '파일을 찾을 수 없습니다.' });
+    }
+
+    const filePath = path.join(uploadsDir, file.fileName);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: '파일을 찾을 수 없습니다.' });
+    }
+
+    return res.download(filePath, file.originalName || file.fileName);
+  } catch (error) {
+    console.error('GET /api/download/:id error:', error);
+    return res.status(500).json({ message: '파일 다운로드에 실패했습니다.' });
+  }
+});
+
+app.get('/api/download/:id/:index', async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+
+    if (!post || !hasAttachments(post.attachments)) {
+      return res.status(404).json({ message: '첨부파일이 없습니다.' });
+    }
+
+    const index = Number(req.params.index);
     const file = post.attachments[index];
 
     if (!file) {
