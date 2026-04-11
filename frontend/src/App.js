@@ -502,6 +502,14 @@ function WritePage() {
     attachment: null,
   });
 
+  const removeSelectedAttachment = () => {
+    setForm((prev) => ({ ...prev, attachment: null }));
+    const fileInput = document.getElementById('attachment-input');
+    if (fileInput) {
+      fileInput.value = '';
+    }
+  };
+
   const submit = async () => {
     setMessage('');
 
@@ -635,12 +643,61 @@ function WritePage() {
           </div>
 
           <div style={{ marginTop: 14 }}>
-            <label style={{ display: 'block', marginBottom: 8, color: '#5e6c62', fontWeight: 700 }}>첨부파일</label>
+            <label style={{ display: 'block', marginBottom: 8, color: '#5e6c62', fontWeight: 700 }}>
+              첨부파일
+            </label>
+
             <input
+              id="attachment-input"
               type="file"
               onChange={(e) => setForm({ ...form, attachment: e.target.files?.[0] || null })}
               style={{ width: '100%' }}
             />
+
+            {form.attachment ? (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: '10px 12px',
+                  border: '1px solid #e1e8de',
+                  borderRadius: 10,
+                  background: '#fafcf9',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: isMobile ? 'stretch' : 'center',
+                  gap: 10,
+                  flexWrap: 'wrap',
+                  flexDirection: isMobile ? 'column' : 'row',
+                }}
+              >
+                <span
+                  style={{
+                    color: '#5f6d63',
+                    fontSize: 14,
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  선택된 파일: {form.attachment.name}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={removeSelectedAttachment}
+                  style={{
+                    height: 36,
+                    border: 'none',
+                    background: '#9a7a7a',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    borderRadius: 8,
+                    padding: '0 14px',
+                    width: isMobile ? '100%' : 'auto',
+                  }}
+                >
+                  첨부 취소
+                </button>
+              </div>
+            ) : null}
           </div>
 
           {message ? <div style={{ color: '#b04b4b', marginTop: 12 }}>{message}</div> : null}
