@@ -14,8 +14,21 @@ function apiConfig() {
   return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  return isMobile;
+}
+
 function PasswordModal({ open, title, onClose, onConfirm }) {
   const [password, setPassword] = useState('');
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (open) setPassword('');
@@ -25,8 +38,14 @@ function PasswordModal({ open, title, onClose, onConfirm }) {
 
   return (
     <div style={modalBackdropStyle}>
-      <div style={modalBoxStyle}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: '#4d6254', marginBottom: 14 }}>
+      <div
+        style={{
+          ...modalBoxStyle,
+          width: isMobile ? '92%' : 380,
+          padding: isMobile ? 18 : 22,
+        }}
+      >
+        <div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: '#4d6254', marginBottom: 14 }}>
           {title}
         </div>
 
@@ -58,6 +77,7 @@ function Layout({ children }) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [passwordMessage, setPasswordMessage] = useState('');
+  const isMobile = useIsMobile();
 
   const logout = () => {
     localStorage.removeItem('adminToken');
@@ -96,11 +116,29 @@ function Layout({ children }) {
   };
 
   return (
-    <div style={{ maxWidth: 1280, margin: '0 auto', padding: '28px 24px 80px', fontFamily: 'Arial, sans-serif', color: '#333', background: '#ffffff' }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+    <div
+      style={{
+        maxWidth: 1280,
+        margin: '0 auto',
+        padding: isMobile ? '16px 12px 56px' : '28px 24px 80px',
+        fontFamily: 'Arial, sans-serif',
+        color: '#333',
+        background: '#ffffff',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: isMobile ? 'stretch' : 'center',
+          gap: 10,
+          marginBottom: 16,
+          flexWrap: 'wrap',
+        }}
+      >
         {isAdmin ? (
           <>
-            <span style={{ color: '#5d7a68', fontWeight: 700 }}>관리자 로그인 상태</span>
+            <span style={{ color: '#5d7a68', fontWeight: 700, alignSelf: 'center' }}>관리자 로그인 상태</span>
             <button onClick={() => setShowChangePassword(!showChangePassword)} style={topBtnStyle('#8ea595')}>
               비밀번호 변경
             </button>
@@ -117,7 +155,15 @@ function Layout({ children }) {
 
       {isAdmin && showChangePassword && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 18 }}>
-          <div style={{ width: 420, border: '1px solid #e5ebe3', padding: 16, background: '#fbfcfa', borderRadius: 12 }}>
+          <div
+            style={{
+              width: isMobile ? '100%' : 420,
+              border: '1px solid #e5ebe3',
+              padding: 16,
+              background: '#fbfcfa',
+              borderRadius: 12,
+            }}
+          >
             <div style={{ fontWeight: 700, marginBottom: 10 }}>관리자 비밀번호 변경</div>
             <input
               type="password"
@@ -141,7 +187,15 @@ function Layout({ children }) {
         </div>
       )}
 
-      <div style={{ textAlign: 'center', fontSize: 34, fontWeight: 700, marginBottom: 36, color: '#4d6254' }}>
+      <div
+        style={{
+          textAlign: 'center',
+          fontSize: isMobile ? 28 : 34,
+          fontWeight: 700,
+          marginBottom: isMobile ? 24 : 36,
+          color: '#4d6254',
+        }}
+      >
         상담문의
       </div>
 
@@ -160,6 +214,7 @@ function ListPage() {
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
   const isAdmin = !!getAdminToken();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -215,25 +270,10 @@ function ListPage() {
 
   const visiblePages = Array.from({ length: pagination.totalPages }, (_, i) => i + 1).slice(0, 10);
 
-  const { sortedPosts, normalPostsAsc } = useMemo(() => {
-    const noticePosts = posts
-      .filter((post) => post.isNotice)
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    const normalPostsAsc = posts
+  const normalPostsAsc = useMemo(() => {
+    return [...posts]
       .filter((post) => !post.isNotice && !post.isReply)
       .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-
-    const normalPostsDesc = [...normalPostsAsc].reverse();
-
-    const replyPosts = posts
-      .filter((post) => post.isReply)
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    return {
-      sortedPosts: [...noticePosts, ...normalPostsDesc, ...replyPosts],
-      normalPostsAsc,
-    };
   }, [posts]);
 
   return (
@@ -246,21 +286,59 @@ function ListPage() {
       />
 
       <div style={panelStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, gap: 12, flexWrap: 'wrap' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: isMobile ? 'stretch' : 'center',
+            marginBottom: 18,
+            gap: 12,
+            flexWrap: 'wrap',
+            flexDirection: isMobile ? 'column' : 'row',
+          }}
+        >
           <div style={{ fontSize: 16, color: '#68766e' }}>전체 : {pagination.total.toLocaleString()}</div>
-          <div style={{ display: 'flex', gap: 8 }}>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: isMobile ? '100%' : 'auto' }}>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="검색어"
-              style={{ width: 320, height: 48, border: '1px solid #d9e0d8', borderRadius: 10, padding: '0 14px', fontSize: 15 }}
+              style={{
+                width: isMobile ? '100%' : 320,
+                height: 48,
+                border: '1px solid #d9e0d8',
+                borderRadius: 10,
+                padding: '0 14px',
+                fontSize: 15,
+                boxSizing: 'border-box',
+              }}
             />
-            <button onClick={() => moveSearch(1)} style={mainBtnStyle('#7b8f7c', 120)}>검색하기</button>
+            <button
+              onClick={() => moveSearch(1)}
+              style={{
+                ...mainBtnStyle('#7b8f7c', isMobile ? '100%' : 120),
+                width: isMobile ? '100%' : 120,
+              }}
+            >
+              검색하기
+            </button>
           </div>
         </div>
 
         <div style={{ borderTop: '2px solid #cfd8cc' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr 130px 130px', padding: '16px 0', fontWeight: 700, borderBottom: '1px solid #e6ede4', textAlign: 'center', color: '#58645c' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '70px 1fr 90px 90px' : '90px 1fr 130px 130px',
+              padding: '16px 0',
+              fontWeight: 700,
+              borderBottom: '1px solid #e6ede4',
+              textAlign: 'center',
+              color: '#58645c',
+              fontSize: isMobile ? 13 : 16,
+            }}
+          >
             <div>번호</div>
             <div>제목</div>
             <div>작성자</div>
@@ -270,11 +348,11 @@ function ListPage() {
           {loading ? (
             <div style={{ padding: 40, textAlign: 'center' }}>불러오는 중...</div>
           ) : (
-            sortedPosts.map((post) => {
+            posts.map((post) => {
               const rowBg = post.isNotice ? '#fafcf8' : '#fff';
 
               const displayNumber = post.isNotice
-                ? ''
+                ? '<공지>'
                 : post.isReply
                 ? ''
                 : normalPostsAsc.findIndex((p) => p._id === post._id) + 1;
@@ -285,43 +363,91 @@ function ListPage() {
                   onClick={() => goDetail(post)}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '90px 1fr 130px 130px',
-                    padding: '18px 0',
+                    gridTemplateColumns: isMobile ? '70px 1fr 90px 90px' : '90px 1fr 130px 130px',
+                    padding: isMobile ? '14px 0' : '18px 0',
                     borderBottom: '1px solid #eef2ec',
                     cursor: 'pointer',
                     alignItems: 'center',
                     background: rowBg,
+                    fontSize: isMobile ? 13 : 15,
                   }}
                 >
-                  <div style={{ textAlign: 'center', fontSize: 17, color: '#5f6a63' }}>
-                    {post.isNotice ? '' : post.isReply ? '' : displayNumber}
+                  <div style={{ textAlign: 'center', fontSize: isMobile ? 14 : 17, color: '#5f6a63' }}>
+                    {displayNumber}
                   </div>
 
-                  <div style={{ paddingRight: 20, paddingLeft: post.isReply ? 28 : 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 24 }}>
+                  <div
+                    style={{
+                      paddingRight: isMobile ? 8 : 20,
+                      paddingLeft: post.isReply ? (isMobile ? 16 : 28) : 0,
+                      minWidth: 0,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 24, minWidth: 0 }}>
                       {post.isReply ? (
-                        <span style={{ color: '#8aa08c', fontSize: 15, fontWeight: 700 }}>↳</span>
+                        <span style={{ color: '#8aa08c', fontSize: isMobile ? 13 : 15, fontWeight: 700, flexShrink: 0 }}>↳</span>
                       ) : null}
 
-                      <span style={{ fontWeight: post.isNotice ? 700 : 500, color: '#404840' }}>
+                      <span
+                        style={{
+                          fontWeight: post.isNotice ? 700 : 500,
+                          color: '#404840',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
                         {post.isReply ? `[RE] ${post.title}` : post.title}
                       </span>
 
-                      {post.hasAttachment ? <span style={{ color: '#7c8b80', fontSize: 13 }}>[첨부]</span> : null}
-                      {post.isNew ? <span style={{ color: '#d45454', fontSize: 12, fontWeight: 700 }}>NEW</span> : null}
+                      {post.hasAttachment ? <span style={{ color: '#7c8b80', fontSize: isMobile ? 11 : 13, flexShrink: 0 }}>[첨부]</span> : null}
+                      {post.isNew ? <span style={{ color: '#d45454', fontSize: isMobile ? 10 : 12, fontWeight: 700, flexShrink: 0 }}>NEW</span> : null}
                     </div>
                   </div>
 
-                  <div style={{ textAlign: 'center', color: '#5f6a63' }}>{post.nickname}</div>
-                  <div style={{ textAlign: 'center', color: '#5f6a63' }}>{new Date(post.createdAt).toISOString().slice(0, 10)}</div>
+                  <div
+                    style={{
+                      textAlign: 'center',
+                      color: '#5f6a63',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      padding: '0 4px',
+                    }}
+                  >
+                    {post.nickname}
+                  </div>
+
+                  <div style={{ textAlign: 'center', color: '#5f6a63', padding: '0 4px' }}>
+                    {new Date(post.createdAt).toISOString().slice(0, 10)}
+                  </div>
                 </div>
               );
             })
           )}
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 22 }}>
-          <div style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: 10, alignItems: 'center' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: 22,
+            gap: 12,
+            flexDirection: isMobile ? 'column' : 'row',
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              justifyContent: 'center',
+              gap: 10,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              width: '100%',
+            }}
+          >
             {visiblePages.map((n) => (
               <button
                 key={n}
@@ -342,8 +468,15 @@ function ListPage() {
             ))}
           </div>
 
-          <Link to="/write" style={{ textDecoration: 'none' }}>
-            <button style={mainBtnStyle('#70866f', 96)}>글쓰기</button>
+          <Link to="/write" style={{ textDecoration: 'none', width: isMobile ? '100%' : 'auto' }}>
+            <button
+              style={{
+                ...mainBtnStyle('#70866f', 96),
+                width: isMobile ? '100%' : 96,
+              }}
+            >
+              글쓰기
+            </button>
           </Link>
         </div>
       </div>
@@ -357,6 +490,7 @@ function WritePage() {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const parentPostId = params.get('parentId') || '';
+  const isMobile = useIsMobile();
 
   const [message, setMessage] = useState('');
   const [form, setForm] = useState({
@@ -407,7 +541,7 @@ function WritePage() {
     <Layout>
       <div style={panelStyle}>
         <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: '#4d6254', marginBottom: 6 }}>
+          <div style={{ fontSize: isMobile ? 22 : 24, fontWeight: 700, color: '#4d6254', marginBottom: 6 }}>
             {parentPostId ? '답글 작성' : isAdmin ? '관리자 글쓰기' : '글쓰기'}
           </div>
           <div style={{ color: '#7b877f', fontSize: 14 }}>
@@ -437,11 +571,26 @@ function WritePage() {
             value={form.content}
             onChange={(e) => setForm({ ...form, content: e.target.value })}
             placeholder="내용"
-            rows={14}
-            style={{ width: '100%', border: '1px solid #d9e0d8', borderRadius: 10, padding: 14, boxSizing: 'border-box', resize: 'vertical', fontSize: 15 }}
+            rows={isMobile ? 10 : 14}
+            style={{
+              width: '100%',
+              border: '1px solid #d9e0d8',
+              borderRadius: 10,
+              padding: 14,
+              boxSizing: 'border-box',
+              resize: 'vertical',
+              fontSize: 15,
+            }}
           />
 
-          <div style={{ display: 'grid', gridTemplateColumns: isAdmin ? '1fr' : '1fr 1fr', gap: 12, marginTop: 12 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isAdmin ? '1fr' : (isMobile ? '1fr' : '1fr 1fr'),
+              gap: 12,
+              marginTop: 12,
+            }}
+          >
             {!isAdmin ? (
               <>
                 <input
@@ -459,7 +608,16 @@ function WritePage() {
                 />
               </>
             ) : (
-              <div style={{ ...readonlyBoxStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div
+                style={{
+                  ...readonlyBoxStyle,
+                  display: 'flex',
+                  alignItems: isMobile ? 'flex-start' : 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  flexDirection: isMobile ? 'column' : 'row',
+                }}
+              >
                 <span>작성자명은 <strong>관리자</strong>로 자동 등록됩니다.</span>
                 {!parentPostId ? (
                   <label style={{ color: '#5e6c62', fontWeight: 700 }}>
@@ -481,16 +639,25 @@ function WritePage() {
             <input
               type="file"
               onChange={(e) => setForm({ ...form, attachment: e.target.files?.[0] || null })}
+              style={{ width: '100%' }}
             />
           </div>
 
           {message ? <div style={{ color: '#b04b4b', marginTop: 12 }}>{message}</div> : null}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-            <Link to="/" style={{ textDecoration: 'none' }}>
-              <button style={subBtnStyle}>목록</button>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 10,
+              marginTop: 20,
+              flexDirection: isMobile ? 'column' : 'row',
+            }}
+          >
+            <Link to="/" style={{ textDecoration: 'none', width: isMobile ? '100%' : 'auto' }}>
+              <button style={{ ...subBtnStyle, width: isMobile ? '100%' : 92 }}>목록</button>
             </Link>
-            <button onClick={submit} style={mainBtnStyle('#70866f', 92)}>등록</button>
+            <button onClick={submit} style={{ ...mainBtnStyle('#70866f', 92), width: isMobile ? '100%' : 92 }}>등록</button>
           </div>
         </div>
       </div>
@@ -506,6 +673,7 @@ function DetailPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [attachmentDeleteModalOpen, setAttachmentDeleteModalOpen] = useState(false);
   const isAdmin = !!getAdminToken();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const run = async () => {
@@ -582,18 +750,48 @@ function DetailPage() {
 
       <div style={panelStyle}>
         <div style={{ borderTop: '2px solid #cfd8cc' }}>
-          <div style={{ padding: '18px 0', borderBottom: '1px solid #e6ede4', fontSize: 28, fontWeight: 700, color: '#49564d' }}>
+          <div
+            style={{
+              padding: '18px 0',
+              borderBottom: '1px solid #e6ede4',
+              fontSize: isMobile ? 22 : 28,
+              fontWeight: 700,
+              color: '#49564d',
+              wordBreak: 'break-word',
+            }}
+          >
             {post.isReply ? `[RE] ${post.title}` : post.title}
           </div>
 
-          <div style={{ display: 'flex', gap: 24, padding: '16px 0', borderBottom: '1px solid #e6ede4', color: '#6a766e', flexWrap: 'wrap' }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: 24,
+              padding: '16px 0',
+              borderBottom: '1px solid #e6ede4',
+              color: '#6a766e',
+              flexWrap: 'wrap',
+              flexDirection: isMobile ? 'column' : 'row',
+            }}
+          >
             <div>작성자: {post.nickname}</div>
             <div>등록일: {new Date(post.createdAt).toLocaleString()}</div>
             {post.isNotice ? <div style={{ color: '#6f8b76', fontWeight: 700 }}>공지글</div> : null}
           </div>
 
           {post.hasAttachment ? (
-            <div style={{ padding: '16px 0', borderBottom: '1px solid #e6ede4', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14, flexWrap: 'wrap' }}>
+            <div
+              style={{
+                padding: '16px 0',
+                borderBottom: '1px solid #e6ede4',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: 14,
+                flexWrap: 'wrap',
+                flexDirection: isMobile ? 'column' : 'row',
+              }}
+            >
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700, marginBottom: 6, color: '#5f6d63' }}>첨부파일</div>
                 <a
@@ -616,16 +814,16 @@ function DetailPage() {
                 </a>
               </div>
 
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <a href={`${API}/download/${post._id}`} style={{ textDecoration: 'none' }}>
-                  <button style={mainBtnStyle('#7d8f83', 92)}>다운로드</button>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0, width: isMobile ? '100%' : 'auto', flexDirection: isMobile ? 'column' : 'row' }}>
+                <a href={`${API}/download/${post._id}`} style={{ textDecoration: 'none', width: isMobile ? '100%' : 'auto' }}>
+                  <button style={{ ...mainBtnStyle('#7d8f83', 92), width: isMobile ? '100%' : 92 }}>다운로드</button>
                 </a>
                 <button
                   onClick={() => {
                     if (isAdmin) removeAttachment('');
                     else setAttachmentDeleteModalOpen(true);
                   }}
-                  style={mainBtnStyle('#9a7a7a', 110)}
+                  style={{ ...mainBtnStyle('#9a7a7a', 110), width: isMobile ? '100%' : 110 }}
                 >
                   첨부삭제
                 </button>
@@ -633,19 +831,36 @@ function DetailPage() {
             </div>
           ) : null}
 
-          <div style={{ minHeight: 280, padding: '24px 0', whiteSpace: 'pre-wrap', lineHeight: 1.8, color: '#3f4741' }}>
+          <div
+            style={{
+              minHeight: isMobile ? 180 : 280,
+              padding: '24px 0',
+              whiteSpace: 'pre-wrap',
+              lineHeight: 1.8,
+              color: '#3f4741',
+              wordBreak: 'break-word',
+            }}
+          >
             {post.content}
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
-            <button onClick={() => navigate('/')} style={subBtnStyle}>목록</button>
-            <button onClick={() => navigate(`/write?parentId=${post._id}`)} style={mainBtnStyle('#7a8e7a', 92)}>답글</button>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 10,
+              marginTop: 24,
+              flexDirection: isMobile ? 'column' : 'row',
+            }}
+          >
+            <button onClick={() => navigate('/')} style={{ ...subBtnStyle, width: isMobile ? '100%' : 92 }}>목록</button>
+            <button onClick={() => navigate(`/write?parentId=${post._id}`)} style={{ ...mainBtnStyle('#7a8e7a', 92), width: isMobile ? '100%' : 92 }}>답글</button>
             <button
               onClick={() => {
                 if (isAdmin) removePost('');
                 else setDeleteModalOpen(true);
               }}
-              style={mainBtnStyle('#8a7474', 92)}
+              style={{ ...mainBtnStyle('#8a7474', 92), width: isMobile ? '100%' : 92 }}
             >
               삭제
             </button>
@@ -661,6 +876,7 @@ function AdminLoginPage() {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
+  const isMobile = useIsMobile();
 
   const login = async () => {
     setMessage('');
@@ -677,8 +893,17 @@ function AdminLoginPage() {
 
   return (
     <Layout>
-      <div style={{ maxWidth: 480, margin: '60px auto', border: '1px solid #e1e7df', borderRadius: 14, padding: 28, background: '#fff' }}>
-        <h2 style={{ marginTop: 0, color: '#526258' }}>관리자 로그인</h2>
+      <div
+        style={{
+          maxWidth: 480,
+          margin: isMobile ? '24px auto' : '60px auto',
+          border: '1px solid #e1e7df',
+          borderRadius: 14,
+          padding: isMobile ? 20 : 28,
+          background: '#fff',
+        }}
+      >
+        <h2 style={{ marginTop: 0, color: '#526258', fontSize: isMobile ? 24 : 28 }}>관리자 로그인</h2>
         <input
           value={id}
           onChange={(e) => setId(e.target.value)}
@@ -693,11 +918,11 @@ function AdminLoginPage() {
           style={{ ...fullInputStyle, marginTop: 12 }}
         />
         {message ? <div style={{ color: '#a34d4d', marginTop: 12 }}>{message}</div> : null}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
-          <Link to="/" style={{ textDecoration: 'none' }}>
-            <button style={subBtnStyle}>취소</button>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18, flexDirection: isMobile ? 'column' : 'row' }}>
+          <Link to="/" style={{ textDecoration: 'none', width: isMobile ? '100%' : 'auto' }}>
+            <button style={{ ...subBtnStyle, width: isMobile ? '100%' : 92 }}>취소</button>
           </Link>
-          <button onClick={login} style={mainBtnStyle('#738873', 92)}>로그인</button>
+          <button onClick={login} style={{ ...mainBtnStyle('#738873', 92), width: isMobile ? '100%' : 92 }}>로그인</button>
         </div>
       </div>
     </Layout>
