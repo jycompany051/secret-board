@@ -570,6 +570,57 @@ app.post('/api/delete-attachment', async (req, res) => {
 });
 
 // =========================
+// 첨부파일 개별 삭제
+// =========================
+app.post('/api/delete-attachment-one', async (req, res) => {
+  try {
+    const { id, index, password } = req.body;
+    const isAdmin = getIsAdminFromRequest(req);
+
+    const post = await Post.findById(id);
+    if (!post) {
+      return res.status(404).json({ message: '글을 찾을 수 없습니다.' });
+    }
+
+    if (!hasAttachments(post.attachments)) {
+      return res.status(400).json({ message: '삭제할 첨부파일이 없습니다.' });
+    }
+
+    const attachmentIndex = Number(index);
+    if (Number.isNaN(attachmentIndex) || attachmentIndex < 0 || attachmentIndex >= post.attachments.length) {
+      return res.status(400).json({ message: '첨부파일 번호가 올바르지 않습니다.' });
+    }
+
+    if (!isAdmin) {
+      if (!post.password) {
+        return res.status(403).json({ message: '권한이 없습니다.' });
+      }
+
+      const ok = await bcrypt.compare(String(password || ''), post.password);
+      if (!ok) {
+        return res.status(403).json({ message: '비밀번호가 틀렸습니다.' });
+      }
+    }
+
+    const target = post.attachments[attachmentIndex];
+    if (target?.fileName) {
+      const filePath = path.join(uploadsDir, target.fileName);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+
+    post.attachments.splice(attachmentIndex, 1);
+    await post.save();
+
+    return res.json({ ok: true, message: '첨부파일이 삭제되었습니다.' });
+  } catch (error) {
+    console.error('POST /api/delete-attachment-one error:', error);
+    return res.status(500).json({ message: '첨부파일 삭제에 실패했습니다.' });
+  }
+});
+
+// =========================
 // 관리자 로그인
 // =========================
 app.post('/api/admin/login', async (req, res) => {
