@@ -1,5 +1,5 @@
 import { BrowserRouter, Link, Route, Routes, useNavigate, useParams, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 
 const API = process.env.REACT_APP_API_URL || 'https://secret-board-2q81.onrender.com/api';
@@ -68,18 +68,28 @@ function Layout({ children }) {
 
   const changePassword = async () => {
     setPasswordMessage('');
+
+    if (!currentPassword || !newPassword) {
+      setPasswordMessage('현재 비밀번호와 새 비밀번호를 입력해주세요.');
+      return;
+    }
+
+    if (newPassword.length < 4) {
+      setPasswordMessage('새 비밀번호는 4자 이상이어야 합니다.');
+      return;
+    }
+
     try {
       const res = await axios.post(
         `${API}/admin/change-password`,
         { currentPassword, newPassword },
         apiConfig()
       );
+
       setPasswordMessage(res.data.message || '비밀번호가 변경되었습니다.');
-      if (res.data.next?.ADMIN_PASSWORD) {
-        alert(`backend/.env의 ADMIN_PASSWORD 값을 ${res.data.next.ADMIN_PASSWORD} 로 바꿔주세요.`);
-      }
       setCurrentPassword('');
       setNewPassword('');
+      alert(res.data.message || '비밀번호가 변경되었습니다.');
     } catch (err) {
       setPasswordMessage(err.response?.data?.message || '비밀번호 변경에 실패했습니다.');
     }
@@ -120,10 +130,10 @@ function Layout({ children }) {
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="새 비밀번호"
+              placeholder="새 비밀번호(4자 이상)"
               style={{ ...fullInputStyle, marginTop: 10 }}
             />
-            {passwordMessage && <div style={{ fontSize: 14, color: '#924a4a', marginTop: 10 }}>{passwordMessage}</div>}
+            {passwordMessage ? <div style={{ fontSize: 14, color: '#924a4a', marginTop: 10 }}>{passwordMessage}</div> : null}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
               <button onClick={changePassword} style={mainBtnStyle('#7c927f', 110)}>변경하기</button>
             </div>
@@ -205,6 +215,27 @@ function ListPage() {
 
   const visiblePages = Array.from({ length: pagination.totalPages }, (_, i) => i + 1).slice(0, 10);
 
+  const { sortedPosts, normalPostsAsc } = useMemo(() => {
+    const noticePosts = posts
+      .filter((post) => post.isNotice)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    const normalPostsAsc = posts
+      .filter((post) => !post.isNotice && !post.isReply)
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+    const normalPostsDesc = [...normalPostsAsc].reverse();
+
+    const replyPosts = posts
+      .filter((post) => post.isReply)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    return {
+      sortedPosts: [...noticePosts, ...normalPostsDesc, ...replyPosts],
+      normalPostsAsc,
+    };
+  }, [posts]);
+
   return (
     <Layout>
       <PasswordModal
@@ -239,8 +270,14 @@ function ListPage() {
           {loading ? (
             <div style={{ padding: 40, textAlign: 'center' }}>불러오는 중...</div>
           ) : (
-            posts.map((post, index) => {
+            sortedPosts.map((post) => {
               const rowBg = post.isNotice ? '#fafcf8' : '#fff';
+
+              const displayNumber = post.isNotice
+                ? ''
+                : post.isReply
+                ? ''
+                : normalPostsAsc.findIndex((p) => p._id === post._id) + 1;
 
               return (
                 <div
@@ -257,7 +294,7 @@ function ListPage() {
                   }}
                 >
                   <div style={{ textAlign: 'center', fontSize: 17, color: '#5f6a63' }}>
-                    {post.isNotice ? '공지' : pagination.total - ((pagination.page - 1) * 10 + index)}
+                    {post.isNotice ? '' : post.isReply ? '' : displayNumber}
                   </div>
 
                   <div style={{ paddingRight: 20, paddingLeft: post.isReply ? 28 : 0 }}>
@@ -358,7 +395,7 @@ function WritePage() {
       });
 
       if (res.data.ok) {
-        alert('등록되었습니다.');
+        alert('등록');
         navigate('/');
       }
     } catch (err) {
@@ -417,7 +454,7 @@ function WritePage() {
                   type="password"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  placeholder={parentPostId ? '답글 비밀번호 (원글과 동일하게 입력)' : '비밀번호 (4자 이상)'}
+                  placeholder={parentPostId ? '답글 비밀번호 (원글과 동일하게 입력)' : '비밀번호(4자 이상)'}
                   style={fullInputStyle}
                 />
               </>
