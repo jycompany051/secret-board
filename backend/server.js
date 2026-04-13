@@ -14,35 +14,22 @@ const app = express();
 // =========================
 // 기본 설정
 // =========================
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'https://secret-board-e88q-9qhnhxuzp-jycompany051s-projects.vercel.app',
-  'https://secret-board-e88q.vercel.app',
-  'https://secret-board-e88q-git-main-jycompany051s-projects.vercel.app',
-  'https://sites.google.com',
-  process.env.FRONTEND_URL,
-].filter(Boolean);
-
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error(`CORS blocked for origin: ${origin}`));
-    },
-    credentials: true,
-  })
-);
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI;
 const JWT_SECRET = process.env.JWT_SECRET || 'secret-board-jwt-key';
 const ADMIN_ID = process.env.ADMIN_ID || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '1234';
+const PAGE_SIZE = 10;
+
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://secret-board-e88q.vercel.app',
+  'https://secret-board-e88q-git-main-jycompany051s-projects.vercel.app',
+  'https://secret-board-e88q-9qhnhxuzp-jycompany051s-projects.vercel.app',
+  'https://sites.google.com',
+  process.env.FRONTEND_URL,
+].filter(Boolean);
 
 if (!MONGO_URI) {
   console.error('MONGO_URI가 .env에 없습니다.');
@@ -58,14 +45,25 @@ if (
   process.exit(1);
 }
 
-// =========================
-// Cloudinary 설정
-// =========================
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+  })
+);
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
 
 // =========================
 // MongoDB 연결
@@ -79,7 +77,7 @@ mongoose
   });
 
 // =========================
-// 루트 / 헬스체크
+// 헬스체크
 // =========================
 app.get('/', (req, res) => {
   res.status(200).send('secret-board backend is running');
@@ -111,14 +109,19 @@ const postSchema = new mongoose.Schema(
     content: { type: String, required: true, default: '' },
     nickname: { type: String, required: true, default: '' },
     password: { type: String, default: '' },
-    isNotice: { type: Boolean, default: false },
-    isReply: { type: Boolean, default: false },
-    parentPostId: { type: mongoose.Schema.Types.ObjectId, ref: 'Post', default: null },
+
+    isNotice: { type: Boolean, default: false, index: true },
+    isReply: { type: Boolean, default: false, index: true },
+    parentPostId: { type: mongoose.Schema.Types.ObjectId, ref: 'Post', default: null, index: true },
+
     isCheckedByAdmin: { type: Boolean, default: false },
     attachments: { type: [attachmentSchema], default: [] },
   },
   { timestamps: true }
 );
+
+postSchema.index({ createdAt: -1 });
+postSchema.index({ title: 'text', nickname: 'text' });
 
 const adminSchema = new mongoose.Schema(
   {
@@ -180,7 +183,6 @@ function verifyAdmin(req, res, next) {
     }
 
     const decoded = jwt.verify(token, JWT_SECRET);
-
     if (decoded.role !== 'admin') {
       return res.status(403).json({ message: '권한이 없습니다.' });
     }
@@ -214,7 +216,7 @@ function buildContentDisposition(filename) {
 }
 
 // =========================
-// multer 설정 (메모리 업로드)
+// multer 설정
 // =========================
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -225,7 +227,7 @@ const upload = multer({
 });
 
 // =========================
-// 파일 업로드/삭제 유틸
+// Cloudinary 유틸
 // =========================
 function hasAttachments(attachments) {
   return Array.isArray(attachments) && attachments.length > 0;
@@ -288,32 +290,65 @@ async function destroyCloudinaryAsset(attachment) {
 }
 
 // =========================
+// 목록 정렬/구성 유틸
+// =========================
+function buildSearchQuery(search) {
+  const keyword = String(search || '').trim();
+  if (!keyword) return {};
+
+  return {
+    $or: [
+      { title: { $regex: keyword, $options: 'i' } },
+      { nickname: { $regex: keyword, $options: 'i' } },
+    ],
+  };
+}
+
+function toListItem(post) {
+  return {
+    ...post,
+    hasAttachment: hasAttachments(post.attachments),
+    attachmentCount: Array.isArray(post.attachments) ? post.attachments.length : 0,
+    isNew: !post.isCheckedByAdmin && !post.isReply && !post.isNotice,
+  };
+}
+
+// =========================
 // 게시글 목록
 // =========================
 app.get('/api/posts', async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page || '1', 10), 1);
     const search = String(req.query.search || '').trim();
-
-    const query = {};
-    if (search) {
-      query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { nickname: { $regex: search, $options: 'i' } },
-      ];
-    }
+    const query = buildSearchQuery(search);
 
     const total = await Post.countDocuments(query);
 
-    const allPosts = await Post.find(query)
-      .sort({ isNotice: -1, createdAt: -1 })
+    const noticePosts = await Post.find({
+      ...query,
+      isNotice: true,
+    })
+      .sort({ createdAt: -1 })
       .lean();
 
-    const noticePosts = allPosts.filter((post) => post.isNotice);
-    const normalPosts = allPosts.filter((post) => !post.isNotice);
+    const normalParentPosts = await Post.find({
+      ...query,
+      isNotice: false,
+      isReply: false,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
 
-    const parentPosts = normalPosts.filter((post) => !post.isReply);
-    const replyPosts = normalPosts.filter((post) => post.isReply);
+    const parentIds = normalParentPosts.map((post) => post._id);
+
+    const replyPosts = parentIds.length
+      ? await Post.find({
+          isReply: true,
+          parentPostId: { $in: parentIds },
+        })
+          .sort({ createdAt: 1 })
+          .lean()
+      : [];
 
     const replyMap = {};
     for (const reply of replyPosts) {
@@ -322,31 +357,24 @@ app.get('/api/posts', async (req, res) => {
       replyMap[key].push(reply);
     }
 
-    for (const key of Object.keys(replyMap)) {
-      replyMap[key].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    const arrangedPosts = [];
+
+    for (const notice of noticePosts) {
+      arrangedPosts.push(toListItem(notice));
     }
 
-    const arrangedPosts = [];
-    for (const notice of noticePosts) arrangedPosts.push(notice);
+    for (const parent of normalParentPosts) {
+      arrangedPosts.push(toListItem(parent));
 
-    for (const parent of parentPosts) {
-      arrangedPosts.push(parent);
       const children = replyMap[String(parent._id)] || [];
       for (const child of children) {
-        arrangedPosts.push(child);
+        arrangedPosts.push(toListItem(child));
       }
     }
 
-    const totalPages = Math.max(Math.ceil(arrangedPosts.length / 10), 1);
-    const start = (page - 1) * 10;
-    const end = start + 10;
-
-    const pagePosts = arrangedPosts.slice(start, end).map((post) => ({
-      ...post,
-      hasAttachment: hasAttachments(post.attachments),
-      attachmentCount: Array.isArray(post.attachments) ? post.attachments.length : 0,
-      isNew: !post.isCheckedByAdmin && !post.isReply && !post.isNotice,
-    }));
+    const totalPages = Math.max(Math.ceil(arrangedPosts.length / PAGE_SIZE), 1);
+    const start = (page - 1) * PAGE_SIZE;
+    const pagePosts = arrangedPosts.slice(start, start + PAGE_SIZE);
 
     return res.json({
       posts: pagePosts,
@@ -354,6 +382,7 @@ app.get('/api/posts', async (req, res) => {
         total,
         page,
         totalPages,
+        pageSize: PAGE_SIZE,
       },
     });
   } catch (error) {
@@ -556,6 +585,7 @@ app.post('/api/delete', async (req, res) => {
     }
 
     await Post.deleteOne({ _id: id });
+
     return res.json({ ok: true });
   } catch (error) {
     console.error('POST /api/delete error:', error);
@@ -623,7 +653,11 @@ app.post('/api/delete-attachment-one', async (req, res) => {
     }
 
     const attachmentIndex = Number(index);
-    if (Number.isNaN(attachmentIndex) || attachmentIndex < 0 || attachmentIndex >= post.attachments.length) {
+    if (
+      Number.isNaN(attachmentIndex) ||
+      attachmentIndex < 0 ||
+      attachmentIndex >= post.attachments.length
+    ) {
       return res.status(400).json({ message: '첨부파일 번호가 올바르지 않습니다.' });
     }
 
@@ -669,6 +703,7 @@ app.post('/api/admin/login', async (req, res) => {
     }
 
     const token = signAdminToken(admin.adminId);
+
     return res.json({
       ok: true,
       token,
@@ -743,9 +778,15 @@ app.get('/api/download/:id', async (req, res) => {
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    res.setHeader('Content-Type', file.mimetype || response.headers.get('content-type') || 'application/octet-stream');
+    res.setHeader(
+      'Content-Type',
+      file.mimetype || response.headers.get('content-type') || 'application/octet-stream'
+    );
     res.setHeader('Content-Length', buffer.length);
-    res.setHeader('Content-Disposition', buildContentDisposition(file.originalName || 'download'));
+    res.setHeader(
+      'Content-Disposition',
+      buildContentDisposition(file.originalName || 'download')
+    );
 
     return res.send(buffer);
   } catch (error) {
@@ -777,9 +818,15 @@ app.get('/api/download/:id/:index', async (req, res) => {
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    res.setHeader('Content-Type', file.mimetype || response.headers.get('content-type') || 'application/octet-stream');
+    res.setHeader(
+      'Content-Type',
+      file.mimetype || response.headers.get('content-type') || 'application/octet-stream'
+    );
     res.setHeader('Content-Length', buffer.length);
-    res.setHeader('Content-Disposition', buildContentDisposition(file.originalName || 'download'));
+    res.setHeader(
+      'Content-Disposition',
+      buildContentDisposition(file.originalName || 'download')
+    );
 
     return res.send(buffer);
   } catch (error) {
