@@ -193,6 +193,27 @@ function verifyAdmin(req, res, next) {
 }
 
 // =========================
+// 파일명 처리
+// =========================
+function decodeOriginalName(name) {
+  if (!name) return '';
+  try {
+    return Buffer.from(name, 'latin1').toString('utf8');
+  } catch {
+    return name;
+  }
+}
+
+function buildContentDisposition(filename) {
+  const safeAscii = String(filename || 'download')
+    .replace(/[^\x20-\x7E]/g, '_')
+    .replace(/"/g, '');
+
+  const encoded = encodeURIComponent(filename || 'download');
+  return `attachment; filename="${safeAscii}"; filename*=UTF-8''${encoded}`;
+}
+
+// =========================
 // multer 설정 (메모리 업로드)
 // =========================
 const upload = multer({
@@ -212,10 +233,14 @@ function hasAttachments(attachments) {
 
 function uploadOneToCloudinary(file, folder = 'secret-board') {
   return new Promise((resolve, reject) => {
+    const decodedName = decodeOriginalName(file.originalname || '');
+    const publicBase = decodedName.replace(/\.[^/.]+$/, '');
+
     const stream = cloudinary.uploader.upload_stream(
       {
         folder,
         resource_type: 'auto',
+        public_id: publicBase,
         use_filename: true,
         unique_filename: true,
       },
@@ -234,11 +259,15 @@ async function uploadFilesToCloudinary(files) {
 
   const uploaded = [];
   for (const file of files) {
-    const result = await uploadOneToCloudinary(file);
+    const decodedName = decodeOriginalName(file.originalname || '');
+    const result = await uploadOneToCloudinary({
+      ...file,
+      originalname: decodedName,
+    });
 
     uploaded.push({
-      originalName: file.originalname || '',
-      fileName: result.original_filename || file.originalname || '',
+      originalName: decodedName,
+      fileName: result.original_filename || decodedName || '',
       fileUrl: result.secure_url || '',
       publicId: result.public_id || '',
       resourceType: result.resource_type || 'auto',
@@ -691,7 +720,7 @@ app.post('/api/admin/change-password', verifyAdmin, async (req, res) => {
 });
 
 // =========================
-// 파일 다운로드 리다이렉트
+// 파일 다운로드
 // =========================
 app.get('/api/download/:id', async (req, res) => {
   try {
@@ -706,7 +735,19 @@ app.get('/api/download/:id', async (req, res) => {
       return res.status(404).json({ message: '파일을 찾을 수 없습니다.' });
     }
 
-    return res.redirect(file.fileUrl);
+    const response = await fetch(file.fileUrl);
+    if (!response.ok) {
+      return res.status(404).json({ message: '파일을 가져오지 못했습니다.' });
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    res.setHeader('Content-Type', file.mimetype || response.headers.get('content-type') || 'application/octet-stream');
+    res.setHeader('Content-Length', buffer.length);
+    res.setHeader('Content-Disposition', buildContentDisposition(file.originalName || 'download'));
+
+    return res.send(buffer);
   } catch (error) {
     console.error('GET /api/download/:id error:', error);
     return res.status(500).json({ message: '파일 다운로드에 실패했습니다.' });
@@ -728,7 +769,19 @@ app.get('/api/download/:id/:index', async (req, res) => {
       return res.status(404).json({ message: '파일을 찾을 수 없습니다.' });
     }
 
-    return res.redirect(file.fileUrl);
+    const response = await fetch(file.fileUrl);
+    if (!response.ok) {
+      return res.status(404).json({ message: '파일을 가져오지 못했습니다.' });
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    res.setHeader('Content-Type', file.mimetype || response.headers.get('content-type') || 'application/octet-stream');
+    res.setHeader('Content-Length', buffer.length);
+    res.setHeader('Content-Disposition', buildContentDisposition(file.originalName || 'download'));
+
+    return res.send(buffer);
   } catch (error) {
     console.error('GET /api/download/:id/:index error:', error);
     return res.status(500).json({ message: '파일 다운로드에 실패했습니다.' });
