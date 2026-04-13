@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 
 const API = process.env.REACT_APP_API_URL || 'https://secret-board-2q81.onrender.com/api';
-const FILE_BASE_URL = process.env.REACT_APP_FILE_BASE_URL || 'https://secret-board-2q81.onrender.com';
 
 function getAdminToken() {
   return sessionStorage.getItem('adminToken') || '';
@@ -920,7 +919,7 @@ function DetailPage() {
                   }}
                 >
                   <a
-                    href={`${FILE_BASE_URL}${file.fileUrl}`}
+                    href={file.fileUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     title={file.originalName}
