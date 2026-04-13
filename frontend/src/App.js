@@ -758,6 +758,7 @@ function DetailPage() {
   const [loading, setLoading] = useState(true);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [attachmentDeleteModalOpen, setAttachmentDeleteModalOpen] = useState(false);
+  const [attachmentDeleteIndex, setAttachmentDeleteIndex] = useState(null);
   const isAdmin = !!getAdminToken();
   const isMobile = useIsMobile();
 
@@ -776,6 +777,11 @@ function DetailPage() {
     run();
   }, [id, navigate]);
 
+  const reloadPost = async () => {
+    const res = await axios.get(`${API}/post/${id}`, apiConfig());
+    setPost(res.data.post);
+  };
+
   const removePost = async (password = '') => {
     try {
       await axios.post(`${API}/delete`, { id, password }, apiConfig());
@@ -786,14 +792,23 @@ function DetailPage() {
     }
   };
 
-  const removeAttachment = async (password = '') => {
+  const removeAllAttachments = async (password = '') => {
     if (!post?.hasAttachment) return;
 
     try {
       await axios.post(`${API}/delete-attachment`, { id, password }, apiConfig());
       alert('첨부파일이 삭제되었습니다.');
-      const res = await axios.get(`${API}/post/${id}`, apiConfig());
-      setPost(res.data.post);
+      await reloadPost();
+    } catch (err) {
+      alert(err.response?.data?.message || '첨부파일 삭제에 실패했습니다.');
+    }
+  };
+
+  const removeOneAttachment = async (index, password = '') => {
+    try {
+      await axios.post(`${API}/delete-attachment-one`, { id, index, password }, apiConfig());
+      alert('첨부파일이 삭제되었습니다.');
+      await reloadPost();
     } catch (err) {
       alert(err.response?.data?.message || '첨부파일 삭제에 실패했습니다.');
     }
@@ -826,11 +841,21 @@ function DetailPage() {
           <PasswordModal
             open={attachmentDeleteModalOpen}
             title="첨부파일 삭제 비밀번호를 입력하세요"
-            onClose={() => setAttachmentDeleteModalOpen(false)}
+            onClose={() => {
+              setAttachmentDeleteModalOpen(false);
+              setAttachmentDeleteIndex(null);
+            }}
             onConfirm={(password) => {
               if (!password) return;
+              const targetIndex = attachmentDeleteIndex;
               setAttachmentDeleteModalOpen(false);
-              removeAttachment(password);
+              setAttachmentDeleteIndex(null);
+
+              if (targetIndex === 'all') {
+                removeAllAttachments(password);
+              } else if (typeof targetIndex === 'number') {
+                removeOneAttachment(targetIndex, password);
+              }
             }}
           />
         </>
@@ -910,22 +935,49 @@ function DetailPage() {
                     {file.originalName}
                   </a>
 
-                  <a
-                    href={`${API}/download/${post._id}/${index}`}
-                    style={{ textDecoration: 'none', width: isMobile ? '100%' : 'auto' }}
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 8,
+                      flexDirection: isMobile ? 'column' : 'row',
+                      width: isMobile ? '100%' : 'auto',
+                    }}
                   >
-                    <button style={{ ...mainBtnStyle('#7d8f83', 92), width: isMobile ? '100%' : 92 }}>
-                      다운로드
+                    <a
+                      href={`${API}/download/${post._id}/${index}`}
+                      style={{ textDecoration: 'none', width: isMobile ? '100%' : 'auto' }}
+                    >
+                      <button style={{ ...mainBtnStyle('#7d8f83', 92), width: isMobile ? '100%' : 92 }}>
+                        다운로드
+                      </button>
+                    </a>
+
+                    <button
+                      onClick={() => {
+                        if (isAdmin) {
+                          removeOneAttachment(index, '');
+                        } else {
+                          setAttachmentDeleteIndex(index);
+                          setAttachmentDeleteModalOpen(true);
+                        }
+                      }}
+                      style={{ ...mainBtnStyle('#9a7a7a', 92), width: isMobile ? '100%' : 92 }}
+                    >
+                      첨부삭제
                     </button>
-                  </a>
+                  </div>
                 </div>
               ))}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button
                   onClick={() => {
-                    if (isAdmin) removeAttachment('');
-                    else setAttachmentDeleteModalOpen(true);
+                    if (isAdmin) {
+                      removeAllAttachments('');
+                    } else {
+                      setAttachmentDeleteIndex('all');
+                      setAttachmentDeleteModalOpen(true);
+                    }
                   }}
                   style={{ ...mainBtnStyle('#9a7a7a', 110), width: isMobile ? '100%' : 110 }}
                 >
