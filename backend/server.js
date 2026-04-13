@@ -5,8 +5,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const dotenv = require('dotenv');
-const fs = require('fs');
-const path = require('path');
+const { v2: cloudinary } = require('cloudinary');
 
 dotenv.config();
 
@@ -50,15 +49,23 @@ if (!MONGO_URI) {
   process.exit(1);
 }
 
-// =========================
-// 업로드 폴더 준비
-// =========================
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+if (
+  !process.env.CLOUDINARY_CLOUD_NAME ||
+  !process.env.CLOUDINARY_API_KEY ||
+  !process.env.CLOUDINARY_API_SECRET
+) {
+  console.error('Cloudinary 환경변수가 .env에 없습니다.');
+  process.exit(1);
 }
 
-app.use('/uploads', express.static(uploadsDir));
+// =========================
+// Cloudinary 설정
+// =========================
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 // =========================
 // MongoDB 연결
@@ -90,6 +97,8 @@ const attachmentSchema = new mongoose.Schema(
     originalName: { type: String, default: '' },
     fileName: { type: String, default: '' },
     fileUrl: { type: String, default: '' },
+    publicId: { type: String, default: '' },
+    resourceType: { type: String, default: 'auto' },
     size: { type: Number, default: 0 },
     mimetype: { type: String, default: '' },
   },
@@ -184,67 +193,69 @@ function verifyAdmin(req, res, next) {
 }
 
 // =========================
-// 파일명 처리
+// multer 설정 (메모리 업로드)
 // =========================
-function decodeOriginalName(name) {
-  if (!name) return '';
-  try {
-    return Buffer.from(name, 'latin1').toString('utf8');
-  } catch {
-    return name;
-  }
-}
-
-function sanitizeBaseName(name) {
-  return (
-    String(name || '')
-      .normalize('NFKD')
-      .replace(/[^\w\s.-]/g, '')
-      .replace(/\s+/g, '_')
-      .replace(/_+/g, '_')
-      .trim() || 'file'
-  );
-}
-
-// =========================
-// multer 설정
-// =========================
-const storage = multer.diskStorage({
-  destination(req, file, cb) {
-    cb(null, uploadsDir);
-  },
-  filename(req, file, cb) {
-    const decodedOriginalName = decodeOriginalName(file.originalname || '');
-    const ext = path.extname(decodedOriginalName);
-    const base = path.basename(decodedOriginalName || 'file', ext);
-    const safeBase = sanitizeBaseName(base);
-    const uniqueName = `${Date.now()}_${safeBase}${ext.toLowerCase()}`;
-    cb(null, uniqueName);
-  },
-});
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 10 * 1024 * 1024,
     files: 5,
   },
 });
 
-function buildAttachments(files) {
-  if (!Array.isArray(files) || files.length === 0) return [];
-
-  return files.map((file) => ({
-    originalName: decodeOriginalName(file.originalname || ''),
-    fileName: file.filename || '',
-    fileUrl: `/uploads/${file.filename}`,
-    size: file.size || 0,
-    mimetype: file.mimetype || '',
-  }));
-}
-
+// =========================
+// 파일 업로드/삭제 유틸
+// =========================
 function hasAttachments(attachments) {
   return Array.isArray(attachments) && attachments.length > 0;
+}
+
+function uploadOneToCloudinary(file, folder = 'secret-board') {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        resource_type: 'auto',
+        use_filename: true,
+        unique_filename: true,
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        return resolve(result);
+      }
+    );
+
+    stream.end(file.buffer);
+  });
+}
+
+async function uploadFilesToCloudinary(files) {
+  if (!Array.isArray(files) || files.length === 0) return [];
+
+  const uploaded = [];
+  for (const file of files) {
+    const result = await uploadOneToCloudinary(file);
+
+    uploaded.push({
+      originalName: file.originalname || '',
+      fileName: result.original_filename || file.originalname || '',
+      fileUrl: result.secure_url || '',
+      publicId: result.public_id || '',
+      resourceType: result.resource_type || 'auto',
+      size: file.size || 0,
+      mimetype: file.mimetype || '',
+    });
+  }
+
+  return uploaded;
+}
+
+async function destroyCloudinaryAsset(attachment) {
+  if (!attachment?.publicId) return;
+
+  await cloudinary.uploader.destroy(attachment.publicId, {
+    resource_type: attachment.resourceType || 'image',
+  });
 }
 
 // =========================
@@ -464,6 +475,8 @@ app.post('/api/write', upload.array('attachments', 5), async (req, res) => {
       }
     }
 
+    const uploadedAttachments = await uploadFilesToCloudinary(req.files);
+
     const created = await Post.create({
       title,
       content,
@@ -473,7 +486,7 @@ app.post('/api/write', upload.array('attachments', 5), async (req, res) => {
       isReply: finalIsReply,
       parentPostId: finalParentPostId,
       isCheckedByAdmin: finalIsCheckedByAdmin,
-      attachments: buildAttachments(req.files),
+      attachments: uploadedAttachments,
     });
 
     return res.json({ ok: true, postId: created._id });
@@ -508,11 +521,8 @@ app.post('/api/delete', async (req, res) => {
     }
 
     if (hasAttachments(post.attachments)) {
-      for (const file of post.attachments) {
-        const filePath = path.join(uploadsDir, file.fileName);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
+      for (const attachment of post.attachments) {
+        await destroyCloudinaryAsset(attachment);
       }
     }
 
@@ -552,11 +562,8 @@ app.post('/api/delete-attachment', async (req, res) => {
       }
     }
 
-    for (const file of post.attachments) {
-      const filePath = path.join(uploadsDir, file.fileName);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+    for (const attachment of post.attachments) {
+      await destroyCloudinaryAsset(attachment);
     }
 
     post.attachments = [];
@@ -603,12 +610,7 @@ app.post('/api/delete-attachment-one', async (req, res) => {
     }
 
     const target = post.attachments[attachmentIndex];
-    if (target?.fileName) {
-      const filePath = path.join(uploadsDir, target.fileName);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-    }
+    await destroyCloudinaryAsset(target);
 
     post.attachments.splice(attachmentIndex, 1);
     await post.save();
@@ -689,7 +691,7 @@ app.post('/api/admin/change-password', verifyAdmin, async (req, res) => {
 });
 
 // =========================
-// 파일 다운로드
+// 파일 다운로드 리다이렉트
 // =========================
 app.get('/api/download/:id', async (req, res) => {
   try {
@@ -700,16 +702,11 @@ app.get('/api/download/:id', async (req, res) => {
     }
 
     const file = post.attachments[0];
-    if (!file) {
+    if (!file?.fileUrl) {
       return res.status(404).json({ message: '파일을 찾을 수 없습니다.' });
     }
 
-    const filePath = path.join(uploadsDir, file.fileName);
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: '파일을 찾을 수 없습니다.' });
-    }
-
-    return res.download(filePath, file.originalName || file.fileName);
+    return res.redirect(file.fileUrl);
   } catch (error) {
     console.error('GET /api/download/:id error:', error);
     return res.status(500).json({ message: '파일 다운로드에 실패했습니다.' });
@@ -727,16 +724,11 @@ app.get('/api/download/:id/:index', async (req, res) => {
     const index = Number(req.params.index);
     const file = post.attachments[index];
 
-    if (!file) {
+    if (!file?.fileUrl) {
       return res.status(404).json({ message: '파일을 찾을 수 없습니다.' });
     }
 
-    const filePath = path.join(uploadsDir, file.fileName);
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: '파일을 찾을 수 없습니다.' });
-    }
-
-    return res.download(filePath, file.originalName || file.fileName);
+    return res.redirect(file.fileUrl);
   } catch (error) {
     console.error('GET /api/download/:id/:index error:', error);
     return res.status(500).json({ message: '파일 다운로드에 실패했습니다.' });
