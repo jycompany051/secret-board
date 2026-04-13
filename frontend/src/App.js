@@ -207,7 +207,7 @@ function ListPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [posts, setPosts] = useState([]);
-  const [pagination, setPagination] = useState({ total: 0, page: 1, totalPages: 1 });
+  const [pagination, setPagination] = useState({ total: 0, page: 1, totalPages: 1, pageSize: 10 });
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
@@ -225,15 +225,18 @@ function ListPage() {
       setLoading(true);
       try {
         const params = new URLSearchParams(location.search);
+        if (!params.get('page')) params.set('page', '1');
+
         const res = await axios.get(`${API}/posts?${params.toString()}`);
         setPosts(res.data.posts || []);
-        setPagination(res.data.pagination || { total: 0, page: 1, totalPages: 1 });
+        setPagination(res.data.pagination || { total: 0, page: 1, totalPages: 1, pageSize: 10 });
       } catch (err) {
         alert(err.response?.data?.message || '목록을 불러오지 못했습니다.');
       } finally {
         setLoading(false);
       }
     };
+
     load();
   }, [location.search]);
 
@@ -267,13 +270,27 @@ function ListPage() {
     }
   };
 
-  const visiblePages = Array.from({ length: pagination.totalPages }, (_, i) => i + 1).slice(0, 10);
+  const visiblePages = useMemo(() => {
+    const totalPages = pagination.totalPages || 1;
+    const current = pagination.page || 1;
+    const windowSize = 10;
+    const start = Math.floor((current - 1) / windowSize) * windowSize + 1;
+    const end = Math.min(start + windowSize - 1, totalPages);
 
-  const normalPostsAsc = useMemo(() => {
-    return [...posts]
-      .filter((post) => !post.isNotice && !post.isReply)
-      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-  }, [posts]);
+    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  }, [pagination.page, pagination.totalPages]);
+
+  const displayNumberMap = useMemo(() => {
+    const normalOnly = posts.filter((post) => !post.isNotice && !post.isReply);
+    const map = {};
+
+    normalOnly.forEach((post, index) => {
+      const startNumber = (pagination.page - 1) * (pagination.pageSize || 10);
+      map[post._id] = startNumber + index + 1;
+    });
+
+    return map;
+  }, [posts, pagination.page, pagination.pageSize]);
 
   return (
     <Layout>
@@ -329,7 +346,7 @@ function ListPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: isMobile ? '70px 1fr 90px 90px' : '90px 1fr 130px 130px',
+              gridTemplateColumns: isMobile ? '72px 1fr 90px 94px' : '90px 1fr 130px 130px',
               padding: '16px 0',
               fontWeight: 700,
               borderBottom: '1px solid #e6ede4',
@@ -346,15 +363,16 @@ function ListPage() {
 
           {loading ? (
             <div style={{ padding: 40, textAlign: 'center' }}>불러오는 중...</div>
+          ) : posts.length === 0 ? (
+            <div style={{ padding: 40, textAlign: 'center', color: '#6d796f' }}>게시글이 없습니다.</div>
           ) : (
             posts.map((post) => {
               const rowBg = post.isNotice ? '#fafcf8' : '#fff';
-
               const displayNumber = post.isNotice
                 ? '<공지>'
                 : post.isReply
                 ? ''
-                : normalPostsAsc.findIndex((p) => p._id === post._id) + 1;
+                : displayNumberMap[post._id] || '';
 
               return (
                 <div
@@ -362,7 +380,7 @@ function ListPage() {
                   onClick={() => goDetail(post)}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: isMobile ? '70px 1fr 90px 90px' : '90px 1fr 130px 130px',
+                    gridTemplateColumns: isMobile ? '72px 1fr 90px 94px' : '90px 1fr 130px 130px',
                     padding: isMobile ? '14px 0' : '18px 0',
                     borderBottom: '1px solid #eef2ec',
                     cursor: 'pointer',
@@ -404,7 +422,12 @@ function ListPage() {
                           [첨부{post.attachmentCount > 1 ? ` ${post.attachmentCount}` : ''}]
                         </span>
                       ) : null}
-                      {post.isNew ? <span style={{ color: '#d45454', fontSize: isMobile ? 10 : 12, fontWeight: 700, flexShrink: 0 }}>NEW</span> : null}
+
+                      {post.isNew ? (
+                        <span style={{ color: '#d45454', fontSize: isMobile ? 10 : 12, fontWeight: 700, flexShrink: 0 }}>
+                          NEW
+                        </span>
+                      ) : null}
                     </div>
                   </div>
 
@@ -445,7 +468,7 @@ function ListPage() {
               flex: 1,
               display: 'flex',
               justifyContent: 'center',
-              gap: 10,
+              gap: 8,
               alignItems: 'center',
               flexWrap: 'wrap',
               width: '100%',
@@ -618,7 +641,7 @@ function WritePage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: isAdmin ? '1fr' : (isMobile ? '1fr' : '1fr 1fr'),
+              gridTemplateColumns: isAdmin ? '1fr' : isMobile ? '1fr' : '1fr 1fr',
               gap: 12,
               marginTop: 12,
             }}
@@ -773,6 +796,7 @@ function DetailPage() {
         setLoading(false);
       }
     };
+
     run();
   }, [id, navigate]);
 
@@ -837,6 +861,7 @@ function DetailPage() {
               removePost(password);
             }}
           />
+
           <PasswordModal
             open={attachmentDeleteModalOpen}
             title="첨부파일 삭제 비밀번호를 입력하세요"
@@ -846,6 +871,7 @@ function DetailPage() {
             }}
             onConfirm={(password) => {
               if (!password) return;
+
               const targetIndex = attachmentDeleteIndex;
               setAttachmentDeleteModalOpen(false);
               setAttachmentDeleteIndex(null);
@@ -1059,12 +1085,14 @@ function AdminLoginPage() {
         }}
       >
         <h2 style={{ marginTop: 0, color: '#526258', fontSize: isMobile ? 24 : 28 }}>관리자 로그인</h2>
+
         <input
           value={id}
           onChange={(e) => setId(e.target.value)}
           placeholder="관리자 아이디"
           style={fullInputStyle}
         />
+
         <input
           type="password"
           value={password}
@@ -1072,12 +1100,24 @@ function AdminLoginPage() {
           placeholder="관리자 비밀번호"
           style={{ ...fullInputStyle, marginTop: 12 }}
         />
+
         {message ? <div style={{ color: '#a34d4d', marginTop: 12 }}>{message}</div> : null}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18, flexDirection: isMobile ? 'column' : 'row' }}>
+
+        <div
+          style={{
+            display: 'flex',
+            gap: 10,
+            justifyContent: 'flex-end',
+            marginTop: 18,
+            flexDirection: isMobile ? 'column' : 'row',
+          }}
+        >
           <Link to="/" style={{ textDecoration: 'none', width: isMobile ? '100%' : 'auto' }}>
             <button style={{ ...subBtnStyle, width: isMobile ? '100%' : 92 }}>취소</button>
           </Link>
-          <button onClick={login} style={{ ...mainBtnStyle('#738873', 92), width: isMobile ? '100%' : 92 }}>로그인</button>
+          <button onClick={login} style={{ ...mainBtnStyle('#738873', 92), width: isMobile ? '100%' : 92 }}>
+            로그인
+          </button>
         </div>
       </div>
     </Layout>
