@@ -358,17 +358,29 @@ app.get('/api/posts', async (req, res) => {
     }
 
     const arrangedPosts = [];
+    let normalNumber = total;
 
     for (const notice of noticePosts) {
-      arrangedPosts.push(toListItem(notice));
+      arrangedPosts.push({
+        ...toListItem(notice),
+        displayNumber: '<공지>',
+      });
     }
 
     for (const parent of normalParentPosts) {
-      arrangedPosts.push(toListItem(parent));
+      arrangedPosts.push({
+        ...toListItem(parent),
+        displayNumber: normalNumber,
+      });
+
+      normalNumber -= 1;
 
       const children = replyMap[String(parent._id)] || [];
       for (const child of children) {
-        arrangedPosts.push(toListItem(child));
+        arrangedPosts.push({
+          ...toListItem(child),
+          displayNumber: '',
+        });
       }
     }
 
