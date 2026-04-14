@@ -281,13 +281,16 @@ function ListPage() {
   }, [pagination.page, pagination.totalPages]);
 
   const displayNumberMap = useMemo(() => {
-    const normalOnly = posts.filter((post) => !post.isNotice && !post.isReply);
-    const map = {};
+  const normalOnly = posts.filter((post) => !post.isNotice && !post.isReply);
+  const map = {};
 
-    normalOnly.forEach((post, index) => {
-      const startNumber = (pagination.page - 1) * (pagination.pageSize || 10);
-      map[post._id] = startNumber + index + 1;
-    });
+  normalOnly.forEach((post, index) => {
+    const startNumber = pagination.total - ((pagination.page - 1) * (pagination.pageSize || 10));
+    map[post._id] = startNumber - index;
+  });
+
+  return map;
+}, [posts, pagination.total, pagination.page, pagination.pageSize]);
 
     return map;
   }, [posts, pagination.page, pagination.pageSize]);
