@@ -280,21 +280,6 @@ function ListPage() {
     return Array.from({ length: end - start + 1 }, (_, i) => start + i);
   }, [pagination.page, pagination.totalPages]);
 
-  const displayNumberMap = useMemo(() => {
-  const normalOnly = posts.filter((post) => !post.isNotice && !post.isReply);
-  const map = {};
-
-  normalOnly.forEach((post, index) => {
-    const startNumber = pagination.total - ((pagination.page - 1) * (pagination.pageSize || 10));
-    map[post._id] = startNumber - index;
-  });
-
-  return map;
-}, [posts, pagination.total, pagination.page, pagination.pageSize]);
-
-    return map;
-  }, [posts, pagination.page, pagination.pageSize]);
-
   return (
     <Layout>
       <PasswordModal
@@ -371,11 +356,7 @@ function ListPage() {
           ) : (
             posts.map((post) => {
               const rowBg = post.isNotice ? '#fafcf8' : '#fff';
-              const displayNumber = post.isNotice
-                ? '<공지>'
-                : post.isReply
-                ? ''
-                : displayNumberMap[post._id] || '';
+              const displayNumber = post.displayNumber ?? '';
 
               return (
                 <div
